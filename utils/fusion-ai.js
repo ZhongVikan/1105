@@ -5,7 +5,7 @@ const fused={rider:570,gunner:610,formation:380,xiao:1000,bombard:1100,guard_kin
 const worth=p=>fused[p.fusionType]||values[p.kind];
 function evaluate(s,side){let v=0;for(const p of s.pieces){const advance=p.side==='red'?9-p.y:p.y,center=4-Math.abs(p.x-4);let bonus=p.kind==='pawn'&&!p.fusionType?advance*10:0;if(!p.general&&['horse','cannon','rook'].includes(p.kind))bonus+=center*7+Math.min(advance,5)*4;v+=(p.side===side?1:-1)*(worth(p)+bonus);}return v;}
 async function choose(s,level,{cancel=()=>false,random=Math.random,onStats}={}){
- const side=s.turn,cfg=Difficulty.profile(level),start=Date.now();let chunk=start,cpu=0,nodes=0,depthDone=0,ttHits=0;const STOP={},cache=new Map(),tt=new Map();
+ const side=s.turn,effective=Difficulty.effectiveLevel(level),cfg=Difficulty.profile(effective),start=Date.now();let chunk=start,cpu=0,nodes=0,depthDone=0,ttHits=0;const STOP={},cache=new Map(),tt=new Map();
  const key=n=>n.turn+'|'+(n.pendingChase||'')+'|'+n.pieces.map(p=>p.id+':'+(p.fusionType||p.kind)+':'+p.x+','+p.y).join(';');
  async function checkpoint(){const now=Date.now();if(cancel()||now-start>=cfg.ms||cpu+now-chunk>=cfg.cpu||nodes>=cfg.nodes)throw STOP;if(now-chunk>=6){cpu+=now-chunk;await new Promise(r=>setTimeout(r,12));chunk=Date.now();if(cancel()||chunk-start>=cfg.ms)throw STOP;}}
  const legal=n=>{const k=key(n);let v=cache.get(k);if(!v){v=F.actions(n);cache.set(k,v);}return v;};
@@ -19,9 +19,9 @@ async function choose(s,level,{cancel=()=>false,random=Math.random,onStats}={}){
  if(cancel())return null;const roots=ordered(s,legal(s));if(!roots.length)return null;let best=roots[0],ranked=[];
  try{for(const m of roots){await checkpoint();let n=F.move(s,m.id,m.to,false).state;const repeats=(s.repetition||[]).filter(r=>r.key===F.key(n)).length,penalty=repeats>=2?2400:repeats*600;if(repeats>=2)n=F.move(s,m.id,m.to,true).state;let terminal=n.status==='ended'?(n.winner===side?100000:n.winner?-100000:0):null;if(terminal===null&&n.turn!==side&&F.checked(n.pieces,n.turn)&&!F.actions(n,true).length)terminal=100000;let v=terminal===null?evaluate(n,side)-penalty:terminal;const p=n.pieces.find(p=>p.id===m.id);if(p&&!p.general&&n.pieces.some(t=>t.side!==side&&F.reach(n.pieces,t,p,true)))v-=worth(p)*.85;ranked.push({m,n,penalty,v,terminal});if(terminal===100000)break;}}catch(e){if(e!==STOP)throw e;}
  ranked.sort((a,b)=>b.v-a.v);if(ranked.length)best=ranked[0].m;
- try{for(let depth=1;depth<=cfg.depth&&ranked[0]?.terminal!==100000;depth++){const results=[];for(const c of ranked){const v=c.terminal===null?await search(c.n,depth-1,-Infinity,Infinity,1,level==='easy'?0:level==='hard'?3:2)-c.penalty:c.terminal;results.push({...c,v});}if(!results.length)break;results.sort((a,b)=>b.v-a.v);ranked=results;best=results[0].m;depthDone=depth;if(Math.abs(results[0].v)>99000)break;}}catch(e){if(e!==STOP)throw e;}
+ try{for(let depth=1;depth<=cfg.depth&&ranked[0]?.terminal!==100000;depth++){const results=[];for(const c of ranked){const v=c.terminal===null?await search(c.n,depth-1,-Infinity,Infinity,1,effective==='easy'?0:effective==='hard'?3:2)-c.penalty:c.terminal;results.push({...c,v});}if(!results.length)break;results.sort((a,b)=>b.v-a.v);ranked=results;best=results[0].m;depthDone=depth;if(Math.abs(results[0].v)>99000)break;}}catch(e){if(e!==STOP)throw e;}
  if(s.ply<4&&depthDone){const near=ranked.filter(c=>!c.penalty&&c.v>=ranked[0].v-12);if(near.length>1)best=near[Math.min(near.length-1,Math.floor(random()*near.length))].m;}
- if(level!=='hard')best=Difficulty.select(ranked,level,random)||best;
+ if(effective!=='hard')best=Difficulty.select(ranked,effective,random)||best;
  if(onStats)onStats({nodes,nodeLimit:cfg.nodes,elapsedMs:Date.now()-start,timeBudget:cfg.ms,cpuMs:cpu+Date.now()-chunk,cpuBudget:cfg.cpu,depth:depthDone,ttHits});return cancel()?null:best;
 }
 module.exports={choose,evaluate};
