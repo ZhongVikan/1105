@@ -137,8 +137,8 @@ class Runtime {
   if(this.scene==='rules'){this.scroll=Math.max(0,Math.min(this.renderer.maxScroll||0,this.scroll+this.touch.lastY-p.y));this.invalidate();}this.touch.lastY=p.y;
  }
  touchEnd(e){const start=this.touch;this.touch=null;const t=e.changedTouches&&e.changedTouches[0];if(!start||!t||start.moved||start.scene!==this.scene)return;const p=this.position(t);if(Math.hypot(p.x-start.x,p.y-start.y)>10)return;
-  const action=this.renderer.targets.slice().reverse().find(r=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h);if(action){this.audio.effect('click');action.action();return;}
-  const c=this.controller;if(this.scene!=='game'||!c||c.data.showResult||c.data.showStickers||c.data.waiting)return;
+  const targetState=this.renderer._targetState,controller=this.controller,targetStateFresh=!targetState||targetState.scene===this.scene&&(!controller||targetState.waiting===!!controller.data.waiting);const action=targetStateFresh&&this.renderer.targets.slice().reverse().find(r=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h);if(action){this.audio.effect('click');action.action();return;}
+  const c=controller;if(this.scene!=='game'||!c||c.data.showResult||c.data.showStickers||c.data.waiting)return;
   const rect=this.renderer.boardRect,point=this.renderer.boardHit(p.x,p.y,rect,c.data.flipped);if(!point)return;
   const visiblePieces=c.data.inference?c.data.inferencePieces:c.data.pieces;const piece=visiblePieces.find(v=>v.x===point.x&&v.y===point.y);c.onPoint({detail:{point,pieceId:piece?piece.id:null}});
  }

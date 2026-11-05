@@ -38,7 +38,7 @@ class Renderer {
   const g=c.createRadialGradient(-r*.3,-r*.45,1,0,0,r*1.25);g.addColorStop(0,hidden?'#edd2a1':'#fff1c8');g.addColorStop(1,hidden?'#b98344':'#d6a566');c.beginPath();c.arc(0,0,r,0,Math.PI*2);c.fillStyle=g;c.fill();c.strokeStyle='#a97940';c.lineWidth=1;c.stroke();c.beginPath();c.arc(0,0,r-3,0,Math.PI*2);c.strokeStyle='#f8e3b5';c.stroke();c.beginPath();c.arc(0,0,r-5,0,Math.PI*2);c.strokeStyle='#bb9056';c.lineWidth=.7;c.stroke();
   if(selected){c.beginPath();c.arc(0,0,r+3,0,Math.PI*2);c.strokeStyle='#af8640';c.lineWidth=1.3;c.stroke();}c.restore();}
  header(title,back=true){this.text(title,187.5,this.top+6,18,'#3c332a','center',true);if(back)this.button('返回',16,this.top-16,56,36,()=>this.runtime.back());}
- draw(now=Date.now()){const c=this.ctx;c.setTransform(this.dpr*this.scale,0,0,this.dpr*this.scale,0,0);c.clearRect(0,0,375,this.height);c.fillStyle='#faf6ef';c.fillRect(0,0,375,this.height);this.targets=[];
+ draw(now=Date.now()){const c=this.ctx;const controller=this.runtime.controller;this._targetState={scene:this.runtime.scene,waiting:!!(controller&&controller.data&&controller.data.waiting)};c.setTransform(this.dpr*this.scale,0,0,this.dpr*this.scale,0,0);c.clearRect(0,0,375,this.height);c.fillStyle='#faf6ef';c.fillRect(0,0,375,this.height);this.targets=[];
   const scene=this.runtime.scene;if(scene==='home')this.home();else if(scene==='difficulty')this.difficulty();else if(scene==='settings')this.settings();else if(scene==='rules')this.ruleScene();else if(scene==='profile')this.profileScene();else if(scene==='game')this.game(now);
  }
  home(){const t=this.top,h=this.height,compact=h-this.bottom-t<570;this.text('智谋无声 · 棋局制胜',187.5,t+26,13,'#9b8369','center');this.text('暗棋大乱斗',187.5,t+72,compact?31:35,'#352a21','center',true);
