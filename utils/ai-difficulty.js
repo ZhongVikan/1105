@@ -1,11 +1,33 @@
 // Targets describe AI win rate against a defined opponent pool, not guaranteed outcomes.
-// Keep tuning in one place for classic/dark/jieqi and fusion.
+// Keep tuning in one place for classic/dark/jieqi and fusion. `ms` is the wall-clock
+// ceiling, `cpu` is the active CPU budget, and `nodes`/`depth` are independent caps.
 const profiles={
- easy:{target:.30,ms:85,cpu:35,nodes:200,depth:2,mistake:.58,tolerance:320},
- normal:{target:.60,ms:300,cpu:120,nodes:1800,depth:4,mistake:.08,tolerance:65},
- hard:{target:.80,ms:800,cpu:240,nodes:7200,depth:6,mistake:0,tolerance:0}
+ easy:{target:.30,ms:100,cpu:40,nodes:350,depth:3,mistake:.58,tolerance:320},
+ normal:{target:.60,ms:400,cpu:180,nodes:25000,depth:7,mistake:.08,tolerance:65},
+ hard:{target:.80,ms:900,cpu:350,nodes:60000,depth:8,mistake:0,tolerance:0}
 };
-function profile(level){return profiles[level]||profiles.normal;}
+
+// WeChat's benchmarkLevel is a coarse device-performance score. Keep the threshold
+// conservative and use memory only as a fallback because some SDK versions report 0.
+const LOW_END_BENCHMARK=10,LOW_END_MEMORY_MB=2048;
+function platformInfo(){
+ if(typeof wx==='undefined')return {};
+ try{
+  const system=typeof wx.getSystemInfoSync==='function'?wx.getSystemInfoSync()||{}:{};
+  const device=typeof wx.getDeviceInfo==='function'?wx.getDeviceInfo()||{}:{};
+  return {...system,...device};
+ }catch(error){return {};}
+}
+function isLowEndDevice(info=platformInfo()){
+ const benchmark=Number(info&&info.benchmarkLevel),memory=Number(info&&(info.memorySize??info.memory));
+ return benchmark>0&&benchmark<=LOW_END_BENCHMARK||memory>0&&memory<=LOW_END_MEMORY_MB;
+}
+function effectiveLevel(level,options={}){
+ const requested=profiles[level]?level:'normal';
+ const lowEnd=Object.prototype.hasOwnProperty.call(options,'lowEnd')?!!options.lowEnd:isLowEndDevice(options.deviceInfo||platformInfo());
+ return requested==='hard'&&lowEnd?'normal':requested;
+}
+function profile(level,options={}){return profiles[effectiveLevel(level,options)];}
 function select(ranked,level,random=Math.random){
  if(!ranked.length)return null;const cfg=profile(level),sorted=ranked.slice().sort((a,b)=>b.v-a.v),best=sorted[0];
  // Always take a known forced win and never deliberately select a known forced loss.
@@ -13,4 +35,4 @@ function select(ranked,level,random=Math.random){
  const alternatives=sorted.filter((r,i)=>i>0&&r.v>-99000&&r.v>=best.v-cfg.tolerance);
  return alternatives.length?alternatives[Math.min(alternatives.length-1,Math.floor(random()*alternatives.length))].m:best.m;
 }
-module.exports={profiles,profile,select};
+module.exports={profiles,profile,select,effectiveLevel,isLowEndDevice};

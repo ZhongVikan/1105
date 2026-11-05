@@ -56,10 +56,10 @@ async function choose(pieces,side,level='normal',options={}){
  const hiddenCount=board.reduce((n,p)=>n+(p.hidden?1:0),0),rootCount=list.length;
  // Keep phone CPU bursts short. Complex dark/jieqi openings get a smaller budget because
  // their branching factor is much larger; the visible 2s thinking delay is handled by controller.
- const base=Difficulty.profile(level);
+ const effective=Difficulty.effectiveLevel(level),base=Difficulty.profile(effective);
  const complexity=Math.max(0,rootCount-28)+Math.floor(hiddenCount/5);
- const timeBudget=Math.max(level==='hard'?175:level==='easy'?40:95,base.ms-complexity*2);
- const nodeLimit=Math.max(level==='hard'?760:level==='easy'?80:320,base.nodes-complexity*12);
+ const timeBudget=Math.max(effective==='hard'?175:effective==='easy'?40:95,base.ms-complexity*2);
+ const nodeLimit=Math.max(effective==='hard'?760:effective==='easy'?80:320,base.nodes-complexity*12);
  const started=Date.now(),deadline=started+timeBudget;
  const visits=new Map();for(const state of (options.history||[]).slice(-120)){const k=Repetition.key(state);visits.set(k,(visits.get(k)||0)+1);}
  const penalties=new Map(list.map(m=>{const next=apply(board,m,side),k=Repetition.key({pieces:next,turn:R.opposite(side)});return [m,Math.min(2400,(visits.get(k)||0)*600)];}));
@@ -69,7 +69,7 @@ async function choose(pieces,side,level='normal',options={}){
  const cachedScore=(b,actor)=>{const k=stateKey(b,actor);let v=evalCache.get(k);if(v===undefined){v=score(b,actor);evalCache.set(k,v);}return v;};
  const initial=ordered(board,list).map(m=>({m,v:cachedScore(apply(board,m,side),side)+rootBonus(board,m)+openingBonus(board,m,(options.history||[]).length)-penalties.get(m)})).sort((a,b)=>b.v-a.v);let ranked=initial;let nodes=0,lastYield=Date.now(),best=initial[0].m,completed=0,ttHits=0;const STOP={};let cpuMs=0;const cpuBudget=base.cpu;const moveKey=m=>m.id+':'+m.to.x+','+m.to.y;
  const searchOrder=(b,list,preferred,ply)=>list.map(m=>({m,v:movePriority(b,m,preferred)+(killers.get(ply)===moveKey(m)?500:0)+Math.min(400,historyOrder.get(moveKey(m))||0)})).sort((a,b)=>b.v-a.v).map(v=>v.m);
- async function checkpoint(){if(cancel()||Date.now()>=deadline||cpuMs+Date.now()-lastYield>=cpuBudget)throw STOP;if(++nodes>nodeLimit)throw STOP;if(Date.now()-lastYield>=6){cpuMs+=Date.now()-lastYield;await yieldFrame();lastYield=Date.now();if(cancel()||Date.now()>=deadline)throw STOP;}}
+ async function checkpoint(){if(cancel()||Date.now()>=deadline||cpuMs+Date.now()-lastYield>=cpuBudget||nodes>=nodeLimit)throw STOP;nodes++;if(Date.now()-lastYield>=6){cpuMs+=Date.now()-lastYield;await yieldFrame();lastYield=Date.now();if(cancel()||Date.now()>=deadline)throw STOP;}}
  async function search(b,actor,depth,alpha,beta,ply,q){
   await checkpoint();if(ply>=10)return cachedScore(b,actor);if(!b.some(p=>!p.hidden&&p.kind==='general'&&p.side===actor))return -100000+ply;
   const checked=G.checked(b,actor);if(depth<=0&&!checked&&q<=0)return cachedScore(b,actor);const all=depth<=0&&!checked?movesCaptures(b,actor):cachedMoves(b,actor);if(!all.length)return depth<=0&&!checked?cachedScore(b,actor):-100000+ply;let candidates=all;
@@ -81,10 +81,10 @@ async function choose(pieces,side,level='normal',options={}){
  }
  for(let depth=1;depth<=base.depth;depth++){
   let alpha=-Infinity,choice=best;const scored=[];
-  try{for(const m of ordered(board,list,best)){const penalty=penalties.get(m),bonus=rootBonus(board,m)+openingBonus(board,m,(options.history||[]).length),v=-await search(apply(board,m,side),R.opposite(side),depth-1,-Infinity,Infinity,1,level==='easy'?0:level==='hard'?3:2)-penalty+bonus;scored.push({m,v});if(v>alpha){alpha=v;choice=m;}}}catch(e){if(e!==STOP)throw e;break;}
-  ranked=scored;best=choice;completed=depth;if(board.length>=30&&(options.history||[]).length<=3){const near=scored.filter(v=>v.v>=alpha-(level==='easy'?70:48));best=near[Math.min(near.length-1,Math.floor(random()*near.length))].m;}if(alpha>99000)break;
+  try{for(const m of ordered(board,list,best)){const penalty=penalties.get(m),bonus=rootBonus(board,m)+openingBonus(board,m,(options.history||[]).length),v=-await search(apply(board,m,side),R.opposite(side),depth-1,-Infinity,Infinity,1,effective==='easy'?0:effective==='hard'?3:2)-penalty+bonus;scored.push({m,v});if(v>alpha){alpha=v;choice=m;}}}catch(e){if(e!==STOP)throw e;break;}
+  ranked=scored;best=choice;completed=depth;if(board.length>=30&&(options.history||[]).length<=3){const near=scored.filter(v=>v.v>=alpha-(effective==='easy'?70:48));best=near[Math.min(near.length-1,Math.floor(random()*near.length))].m;}if(alpha>99000)break;
  }
- if(level!=='hard'&&!classicOpening)best=Difficulty.select(ranked,level,random)||best;
+ if(effective!=='hard'&&!classicOpening)best=Difficulty.select(ranked,effective,random)||best;
  if(options.onStats)options.onStats({nodes,depth:completed,elapsedMs:Date.now()-started,cpuMs:cpuMs+Date.now()-lastYield,cpuBudget,nodeLimit,timeBudget,ttHits,ttSize:tt.size,moveCache:moveCache.size,evalCache:evalCache.size});return cancel()?null:best;
 }
 module.exports={choose,publicBoard,apply,moves,score};
