@@ -1,0 +1,196 @@
+{
+  "files": {
+    "01_对局背景音乐.wav": {
+      "src": "namedAudio1/01_对局背景音乐.wav",
+      "package": "namedAudio1"
+    },
+    "02_选中棋子_起子.wav": {
+      "src": "namedAudio2/02_选中棋子_起子.wav",
+      "package": "namedAudio2"
+    },
+    "03_移动落子.wav": {
+      "src": "assets/instant-audio/03_移动落子.wav"
+    },
+    "04_吃.wav": {
+      "src": "namedAudio2/04_吃.wav",
+      "package": "namedAudio2"
+    },
+    "06_闷杀.wav": {
+      "src": "namedAudio2/06_闷杀.wav",
+      "package": "namedAudio2"
+    },
+    "07_闷宫.wav": {
+      "src": "namedAudio2/07_闷宫.wav",
+      "package": "namedAudio2"
+    },
+    "08_闷罐杀.wav": {
+      "src": "namedAudio2/08_闷罐杀.wav",
+      "package": "namedAudio2"
+    },
+    "09_白脸将.wav": {
+      "src": "namedAudio2/09_白脸将.wav",
+      "package": "namedAudio2"
+    },
+    "10_铁门栓.wav": {
+      "src": "namedAudio2/10_铁门栓.wav",
+      "package": "namedAudio2"
+    },
+    "11_大刀剜心.wav": {
+      "src": "namedAudio2/11_大刀剜心.wav",
+      "package": "namedAudio2"
+    },
+    "12_双车错.wav": {
+      "src": "namedAudio2/12_双车错.wav",
+      "package": "namedAudio2"
+    },
+    "13_重炮.wav": {
+      "src": "namedAudio2/13_重炮.wav",
+      "package": "namedAudio2"
+    },
+    "14_马后炮.wav": {
+      "src": "namedAudio3/14_马后炮.wav",
+      "package": "namedAudio3"
+    },
+    "15_卧槽马.wav": {
+      "src": "namedAudio3/15_卧槽马.wav",
+      "package": "namedAudio3"
+    },
+    "16_挂角马.wav": {
+      "src": "namedAudio3/16_挂角马.wav",
+      "package": "namedAudio3"
+    },
+    "17_八角马.wav": {
+      "src": "namedAudio3/17_八角马.wav",
+      "package": "namedAudio3"
+    },
+    "18_海底捞月.wav": {
+      "src": "namedAudio3/18_海底捞月.wav",
+      "package": "namedAudio3"
+    },
+    "19_大胆穿心.wav": {
+      "src": "namedAudio3/19_大胆穿心.wav",
+      "package": "namedAudio3"
+    },
+    "20_二路夹车炮.wav": {
+      "src": "namedAudio3/20_二路夹车炮.wav",
+      "package": "namedAudio3"
+    },
+    "21_高钓马.wav": {
+      "src": "namedAudio3/21_高钓马.wav",
+      "package": "namedAudio3"
+    },
+    "22_送佛归殿.wav": {
+      "src": "namedAudio3/22_送佛归殿.wav",
+      "package": "namedAudio3"
+    },
+    "23_小鬼坐龙庭.wav": {
+      "src": "namedAudio3/23_小鬼坐龙庭.wav",
+      "package": "namedAudio3"
+    },
+    "24_困毙.wav": {
+      "src": "namedAudio3/24_困毙.wav",
+      "package": "namedAudio3"
+    },
+    "25_超时判负.wav": {
+      "src": "namedAudio4/25_超时判负.wav",
+      "package": "namedAudio4"
+    },
+    "05_将军(1).wav": {
+      "src": "namedAudio2/05_将军(1).wav",
+      "package": "namedAudio2",
+      "key": "将军"
+    },
+    "26_神之一手.wav": {
+      "src": "namedAudio4/26_神之一手.wav",
+      "package": "namedAudio4",
+      "key": "神之一手"
+    },
+    "28_亮车.wav": {
+      "src": "namedAudio4/28_亮车.wav",
+      "package": "namedAudio4",
+      "key": "亮车"
+    },
+    "02_选中棋子_起子(1).wav": {
+      "src": "assets/instant-audio/02_选中棋子_起子(1).wav",
+      "key": "选中棋子_起子"
+    },
+    "27_吃车.wav": {
+      "src": "namedAudio4/27_吃车.wav",
+      "package": "namedAudio4",
+      "key": "吃车"
+    },
+    "36_设置按钮反馈声.wav": {
+      "src": "assets/instant-audio/36_设置按钮反馈声.wav"
+    },
+    "崩住！.wav": {
+      "src": "namedAudio4/崩住！.wav",
+      "package": "namedAudio4"
+    },
+    "别投降，我还没开始演.wav": {
+      "src": "namedAudio4/别投降，我还没开始演.wav",
+      "package": "namedAudio4"
+    },
+    "大意了没有闪.wav": {
+      "src": "namedAudio5/大意了没有闪.wav",
+      "package": "namedAudio5"
+    },
+    "将死.wav": {
+      "src": "namedAudio4/将死.wav",
+      "package": "namedAudio4"
+    },
+    "太帅了.wav": {
+      "src": "namedAudio5/太帅了.wav",
+      "package": "namedAudio5"
+    },
+    "我裂开了.wav": {
+      "src": "namedAudio5/我裂开了.wav",
+      "package": "namedAudio5"
+    },
+    "卧槽上将.wav": {
+      "src": "namedAudio5/卧槽上将.wav",
+      "package": "namedAudio5"
+    },
+    "又是铁门栓.wav": {
+      "src": "namedAudio5/又是铁门栓.wav",
+      "package": "namedAudio5"
+    },
+    "这步AI附体.wav": {
+      "src": "namedAudio5/这步AI附体.wav",
+      "package": "namedAudio5"
+    },
+    "40_禁止提示音.wav": {
+      "src": "assets/instant-audio/40_禁止提示音.wav"
+    },
+    "41_将军抽车.wav": {
+      "src": "namedAudio6/41_将军抽车.wav",
+      "package": "namedAudio6"
+    },
+    "42_将军抽马.wav": {
+      "src": "namedAudio6/42_将军抽马.wav",
+      "package": "namedAudio6"
+    },
+    "43_将军抽炮.wav": {
+      "src": "namedAudio6/43_将军抽炮.wav",
+      "package": "namedAudio6"
+    },
+    "47_十秒倒计时_渐进版.wav": {
+      "src": "assets/instant-audio/47_十秒倒计时_渐进版.wav"
+    }
+  },
+  "events": {
+    "capture": "04_吃.wav",
+    "check": "05_将军(1).wav",
+    "rookCapture": "27_吃车.wav",
+    "rookReveal": "28_亮车.wav",
+    "checkForkRook": "41_将军抽车.wav",
+    "checkForkHorse": "42_将军抽马.wav",
+    "checkForkCannon": "43_将军抽炮.wav"
+  },
+  "effects": {
+    "pickup": "02_选中棋子_起子(1).wav",
+    "drop": "03_移动落子.wav",
+    "click": "36_设置按钮反馈声.wav",
+    "forbidden": "40_禁止提示音.wav"
+  },
+  "bgm": "01_对局背景音乐.wav"
+}

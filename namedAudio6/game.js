@@ -1,0 +1,1 @@
+// Check-fork announcement assets.

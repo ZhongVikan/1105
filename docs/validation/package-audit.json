@@ -1,0 +1,119 @@
+{
+  "mainBytes": 1094549,
+  "totalBytes": 19262507,
+  "packages": [
+    {
+      "name": "stickersA",
+      "root": "stickersA/",
+      "bytes": 1141311
+    },
+    {
+      "name": "stickersB",
+      "root": "stickersB/",
+      "bytes": 1088501
+    },
+    {
+      "name": "namedAudio1",
+      "root": "namedAudio1/",
+      "bytes": 573401
+    },
+    {
+      "name": "namedAudio2",
+      "root": "namedAudio2/",
+      "bytes": 542389
+    },
+    {
+      "name": "namedAudio3",
+      "root": "namedAudio3/",
+      "bytes": 533609
+    },
+    {
+      "name": "namedAudio4",
+      "root": "namedAudio4/",
+      "bytes": 564167
+    },
+    {
+      "name": "namedAudio5",
+      "root": "namedAudio5/",
+      "bytes": 550859
+    },
+    {
+      "name": "namedAudio6",
+      "root": "namedAudio6/",
+      "bytes": 158147
+    },
+    {
+      "name": "uiScene",
+      "root": "uiScene/",
+      "bytes": 1703762
+    },
+    {
+      "name": "uiV2_1",
+      "root": "uiV2_1/",
+      "bytes": 1692128
+    },
+    {
+      "name": "uiV2_2",
+      "root": "uiV2_2/",
+      "bytes": 1383957
+    },
+    {
+      "name": "uiV2_3",
+      "root": "uiV2_3/",
+      "bytes": 496631
+    },
+    {
+      "name": "uiV2_4",
+      "root": "uiV2_4/",
+      "bytes": 291529
+    },
+    {
+      "name": "uiV2_5",
+      "root": "uiV2_5/",
+      "bytes": 71488
+    },
+    {
+      "name": "uiV2_6",
+      "root": "uiV2_6/",
+      "bytes": 127549
+    },
+    {
+      "name": "uiV2_7",
+      "root": "uiV2_7/",
+      "bytes": 487770
+    },
+    {
+      "name": "uiV2_8",
+      "root": "uiV2_8/",
+      "bytes": 437706
+    },
+    {
+      "name": "uiTitle",
+      "root": "uiTitle/",
+      "bytes": 1728228
+    },
+    {
+      "name": "uiSecondary",
+      "root": "uiSecondary/",
+      "bytes": 1340401
+    },
+    {
+      "name": "fusionAudio",
+      "root": "fusionAudio/",
+      "bytes": 264860
+    },
+    {
+      "name": "uiRuleArt",
+      "root": "uiRuleArt/",
+      "bytes": 978898
+    },
+    {
+      "name": "uiFusionPieces",
+      "root": "uiFusionPieces/",
+      "bytes": 2010667
+    }
+  ],
+  "assets": 134,
+  "serverRules": "synchronized",
+  "note": "Source-byte check; final WeChat compiler output and platform quota must be verified in developer tools."
+}

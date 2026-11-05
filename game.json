@@ -1,0 +1,94 @@
+{
+  "deviceOrientation": "portrait",
+  "showStatusBar": false,
+  "subpackages": [
+    {
+      "name": "stickersA",
+      "root": "stickersA/"
+    },
+    {
+      "name": "stickersB",
+      "root": "stickersB/"
+    },
+    {
+      "name": "namedAudio1",
+      "root": "namedAudio1/"
+    },
+    {
+      "name": "namedAudio2",
+      "root": "namedAudio2/"
+    },
+    {
+      "name": "namedAudio3",
+      "root": "namedAudio3/"
+    },
+    {
+      "name": "namedAudio4",
+      "root": "namedAudio4/"
+    },
+    {
+      "name": "namedAudio5",
+      "root": "namedAudio5/"
+    },
+    {
+      "name": "namedAudio6",
+      "root": "namedAudio6/"
+    },
+    {
+      "name": "uiScene",
+      "root": "uiScene/"
+    },
+    {
+      "name": "uiV2_1",
+      "root": "uiV2_1/"
+    },
+    {
+      "name": "uiV2_2",
+      "root": "uiV2_2/"
+    },
+    {
+      "name": "uiV2_3",
+      "root": "uiV2_3/"
+    },
+    {
+      "name": "uiV2_4",
+      "root": "uiV2_4/"
+    },
+    {
+      "name": "uiV2_5",
+      "root": "uiV2_5/"
+    },
+    {
+      "name": "uiV2_6",
+      "root": "uiV2_6/"
+    },
+    {
+      "name": "uiV2_7",
+      "root": "uiV2_7/"
+    },
+    {
+      "name": "uiV2_8",
+      "root": "uiV2_8/"
+    },
+    {
+      "name": "uiTitle",
+      "root": "uiTitle/"
+    },
+    {
+      "name": "uiSecondary",
+      "root": "uiSecondary/"
+    },
+    {
+      "name": "fusionAudio",
+      "root": "fusionAudio/"
+    },
+    {
+      "name": "uiRuleArt",
+      "root": "uiRuleArt/"
+    },
+    {
+      "name": "uiFusionPieces",
+      "root": "uiFusionPieces/"
+    }
+  ]
+}

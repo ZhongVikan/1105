@@ -1,0 +1,4 @@
+const test=require('node:test'),a=require('node:assert/strict'),AI=require('../utils/ai'),G=require('../utils/game-engine');
+const p=(id,kind,x,y,side)=>({id,kind,x,y,side,hidden:false});
+
+test('AI changes a quiet repeated position when a safe alternative exists',async()=>{const Rep=require('../utils/repetition');const b=[p('rg','general',3,9,'red'),p('bg','general',5,0,'black'),p('rr','rook',0,7,'red'),p('br','rook',8,2,'black')];const opts={random:()=>1,yieldFrame:()=>Promise.resolve()};const first=await AI.choose(b,'black','normal',opts),repeated={pieces:AI.apply(b,first,'black'),turn:'red'};const next=await AI.choose(b,'black','normal',{...opts,history:[repeated,repeated]});a.ok(G.legalAttempt(b,next.id,next.to,'black'));a.notEqual(Rep.key({pieces:AI.apply(b,next,'black'),turn:'red'}),Rep.key(repeated));});

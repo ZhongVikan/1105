@@ -1,0 +1,13 @@
+{
+  "appid": "wx5afed2840d141da3",
+  "projectname": "DarkChessMiniGame",
+  "compileType": "game",
+  "cloudfunctionRoot": "cloudfunctions/",
+  "setting": {"es6": true, "minified": true},
+  "packOptions": {"ignore": [
+    {"type": "folder", "value": "cloudfunctions"},
+    {"type": "folder", "value": "tests"},
+    {"type": "folder", "value": "tools"},
+    {"type": "folder", "value": "docs"}
+  ]}
+}

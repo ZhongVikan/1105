@@ -1,0 +1,1 @@
+// UI resource subpackage

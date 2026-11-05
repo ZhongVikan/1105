@@ -1,0 +1,18 @@
+// Actual current-project Canvas capture, plus native-pixel before/after comparison.
+const fs=require('fs'),path=require('path'),{createHost}=require('./recording/canvas-host'),{scenarios}=require('./recording/fixtures'),G=require('../utils/game-engine');
+const out=path.resolve(process.argv[2]||'/tmp/chess-clarity-review');fs.mkdirSync(out,{recursive:true});
+(async()=>{const h=createHost({realtime:true,pixelRatio:3}),manifest={source:'Current Runtime/Controller/game-engine/Canvas; real clock. wx I/O host, not phone footage. Native-pixel screenshots, no AI artwork.',frames:[],dpr:null};let timer=null,title='';const video=h.createCanvas(375,852),q=video.getContext('2d');
+ const wait=ms=>new Promise(r=>setTimeout(r,ms));
+ function shot(){const at=Date.now(),screen=h.draw();q.fillStyle='#292117';q.fillRect(0,0,375,40);q.fillStyle='#ffe6a3';q.font='13px "Noto Sans CJK SC"';q.textAlign='center';q.fillText(title,187,24);q.drawImage(screen,0,40,375,812);const file=String(manifest.frames.length).padStart(5,'0')+'.jpg';fs.writeFileSync(path.join(out,file),video.toBuffer('image/jpeg',94));manifest.frames.push({at,file});timer=setTimeout(shot,Math.max(0,33.333-(Date.now()-at)));}
+ try{await h.preload();let c=await h.load(scenarios.capture());h.draw();manifest.dpr=h.app.renderer.dpr;
+ title='「吃」字：淡入120ms · 停留560ms · 淡出420ms';shot();await wait(300);await c.onPoint({detail:{point:{x:2,y:7},pieceId:'r'}});await wait(220);await h.move('r',{x:2,y:4});await wait(700);title='提示继续显示，下一步与倒计时不受阻塞';await h.move('b',{x:8,y:4});await wait(1200);clearTimeout(timer);
+ const Baseline=require(process.env.CHESS_CLARITY_BASELINE||'/workspace/clarity-baseline/src/renderer'),r=h.app.renderer;manifest.comparisons=[];
+ for(const variant of ['classic','fusion']){c=await h.load(G.newGame(()=>.4,variant));if(variant==='fusion'){await h.move('red-back-0',{x:1,y:9});await wait(650);}h.draw();const before=new Baseline(h.app);before.images=r.images;before.uiPackages=r.uiPackages;before.draw(Date.now());const after=h.draw();
+ fs.writeFileSync(path.join(out,variant+'-native-after.png'),after.toBuffer('image/png'));
+ const old=h.createCanvas(after.width,after.height),oc=old.getContext('2d');oc.imageSmoothingEnabled=true;oc.drawImage(before.canvas,0,0,old.width,old.height);
+ const b=r.boardRect,p=r.boardPoint({x:0,y:9},false),yy=Math.round((b.y+p.y*b.h/800-24)*r.dpr),xx=Math.round((b.x-2)*r.dpr),w=Math.min(after.width-xx,Math.round((b.w+4)*r.dpr)),hh=144;
+ const comp=h.createCanvas(w,hh*2+92),ctx=comp.getContext('2d');ctx.fillStyle='#292117';ctx.fillRect(0,0,comp.width,comp.height);ctx.font='23px "Noto Sans CJK SC"';ctx.fillStyle='#ffe5a3';ctx.fillText('之前：1.5倍画布 + 低分辨率棋子缓存',16,30);ctx.drawImage(old,xx,yy,w,hh,0,44,w,hh);ctx.fillText('现在：3倍画布 + 匹配原生像素的缓存（原图未改）',16,hh+76);ctx.drawImage(after,xx,yy,w,hh,0,hh+92,w,hh);fs.writeFileSync(path.join(out,variant+'-comparison.png'),comp.toBuffer('image/png'));
+ manifest.comparisons.push({variant,oldDpr:before.dpr,newDpr:r.dpr,oldCache:before.stationaryLayer.width,newCache:r.stationaryLayer.width,logicalBoard:b});}
+ const lines=['ffconcat version 1.0'];for(let i=0;i<manifest.frames.length;i++){const f=manifest.frames[i];lines.push(`file '${f.file}'`,'duration '+((i+1<manifest.frames.length?manifest.frames[i+1].at-f.at:33.333)/1000).toFixed(6));}lines.push(`file '${manifest.frames[manifest.frames.length-1].file}'`);fs.writeFileSync(path.join(out,'frames.ffconcat'),lines.join('\n'));fs.writeFileSync(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2));console.log(manifest.comparisons);
+ }finally{clearTimeout(timer);h.close();}
+})();

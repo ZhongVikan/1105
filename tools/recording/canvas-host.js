@@ -1,0 +1,24 @@
+// Local host for the real Runtime/Controller/Renderer. Not a WeChat device emulator.
+const path=require('path'),fs=require('fs'),{createCanvas,Image,loadImage,GlobalFonts}=require('@napi-rs/canvas');
+const root=path.resolve(__dirname,'../..');
+function createHost({realtime=false,pixelRatio=1}={}){
+ GlobalFonts.registerFromPath('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc','Noto Sans CJK SC');
+ GlobalFonts.registerFromPath(path.join(root,'assets/fonts/DarkChessKai.ttf'),'DarkChessKai');
+ let now=100000,next=1;const tasks=new Map(),sounds=[],real={now:Date.now,timeout:global.setTimeout,interval:global.setInterval,clearTimeout:global.clearTimeout,clearInterval:global.clearInterval};
+ if(!realtime){Date.now=()=>now;global.setTimeout=(fn,ms=0)=>{const id=next++;tasks.set(id,{fn,at:now+Math.max(0,ms)});return id;};global.setInterval=(fn,ms)=>{const id=next++;tasks.set(id,{fn,at:now+ms,interval:ms});return id;};global.clearTimeout=global.clearInterval=id=>tasks.delete(id);}
+ global.requestAnimationFrame=()=>next++;global.cancelAnimationFrame=()=>{};
+ const durations=new Map();
+ function duration(src){if(durations.has(src))return durations.get(src);let ms=500;try{const b=fs.readFileSync(path.join(root,src));if(b.toString('ascii',0,4)==='RIFF'){let rate=0,data=0;for(let at=12;at+8<=b.length;){const type=b.toString('ascii',at,at+4),size=b.readUInt32LE(at+4);if(type==='fmt ')rate=b.readUInt32LE(at+16);if(type==='data')data=size;at+=8+size+(size%2);}if(rate&&data)ms=data/rate*1000;}}catch(e){}durations.set(src,ms);return ms;}
+ const events={},context=()=>({onError(){},onEnded(fn){this.ended=fn;},play(){sounds.push({at:Date.now(),src:this.src});if(this.ended&&!this.loop){global.clearTimeout(this.timer);this.timer=global.setTimeout(()=>this.ended(),duration(this.src));}},pause(){global.clearTimeout(this.timer);},stop(){global.clearTimeout(this.timer);},destroy(){global.clearTimeout(this.timer);}});
+ global.wx={getStorageSync:()=>null,setStorageSync(){},getWindowInfo:()=>({windowWidth:375,windowHeight:812,pixelRatio:pixelRatio,safeArea:{top:24,bottom:792}}),getDeviceInfo:()=>({benchmarkLevel:30}),getMenuButtonBoundingClientRect:()=>({bottom:52}),getLaunchOptionsSync:()=>({query:{}}),createCanvas:()=>createCanvas(375,812),createImage:()=>new Image(),createInnerAudioContext:context,loadFont:()=>'DarkChessKai',showToast(o){throw Error(o.title);},showModal(o){o.success({confirm:true});if(o.complete)o.complete();},showActionSheet(o){o.success({tapIndex:4});o.complete();},loadSubpackage(o){o.success();},showShareMenu(){}};
+ for(const n of ['TouchStart','TouchMove','TouchEnd','TouchCancel','Hide','Show','WindowResize','ShareAppMessage'])wx['on'+n]=f=>events[n]=f;
+ const Runtime=require('../../src/runtime'),assets=require('../../src/ui-assets'),FX=require('../../src/battle-effects'),app=new Runtime();app.start();app.renderer.stop();
+ async function preload(){await Promise.all(Object.values(assets).map(async src=>app.renderer.images.set(src,{image:await loadImage(path.join(root,src))})));app.renderer.uiPackages={};for(const src of Object.values(assets))app.renderer.uiPackages[src.split('/')[0]]='ready';FX.preload(app.renderer);app.renderer._v2Loading=Promise.resolve(true);}
+ function advance(to){if(to<now)throw Error('Clock must be monotonic');let count=0;while(true){let id=null,task=null;for(const [i,t] of tasks)if(t.at<=to&&(!task||t.at<task.at)){id=i;task=t;}if(!task)break;now=task.at;if(task.interval)task.at+=task.interval;else tasks.delete(id);task.fn();if(++count>100000)throw Error('Unexpected timer loop');}now=to;}
+ async function load(state){if(app.controller)app.home();await app.startGame({mode:'ai',variant:state.variant});const c=app.controller;c._mode='local';c._state=state;c._history=[];c._repetitionHistory=[];c._clock.start();c.sync();app.scene='game';return c;}
+ async function move(id,to){const c=app.controller;if(!to){c.finishChase();return;}const p=c._state.pieces.find(p=>p.id===id);if(!p)throw Error('Missing '+id);if(c.data.selectedId!==id)await c.onPoint({detail:{point:{x:p.x,y:p.y},pieceId:id}});const target=c._state.pieces.find(p=>p.x===to.x&&p.y===to.y);const before=c._state;await c.onPoint({detail:{point:to,pieceId:target&&target.id}});if(c._state===before)throw Error('Move not executed: '+id+' '+JSON.stringify(to));}
+ function draw(){app.renderer.draw(Date.now());return app.renderer.canvas;}
+ function close(){app.home();app.renderer.stop();Date.now=real.now;global.setTimeout=real.timeout;global.setInterval=real.interval;global.clearTimeout=real.clearTimeout;global.clearInterval=real.clearInterval;delete global.wx;delete global.requestAnimationFrame;delete global.cancelAnimationFrame;}
+ return {app,sounds,events,get now(){return Date.now();},advance,preload,load,move,draw,close,createCanvas};
+}
+module.exports={createHost};

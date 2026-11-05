@@ -1,0 +1,70 @@
+{
+  "source": "Current Runtime/Controller/game-engine/Canvas; real clock. wx I/O host, not phone footage. Native-pixel screenshots, no AI artwork.",
+  "frames": [
+    {
+      "at": 1792944159059,
+      "file": "00000.jpg"
+    },
+    {
+      "at": 1792944159762,
+      "file": "00001.jpg"
+    },
+    {
+      "at": 1792944160234,
+      "file": "00002.jpg"
+    },
+    {
+      "at": 1792944160588,
+      "file": "00003.jpg"
+    },
+    {
+      "at": 1792944160958,
+      "file": "00004.jpg"
+    },
+    {
+      "at": 1792944161375,
+      "file": "00005.jpg"
+    },
+    {
+      "at": 1792944161719,
+      "file": "00006.jpg"
+    },
+    {
+      "at": 1792944162057,
+      "file": "00007.jpg"
+    },
+    {
+      "at": 1792944162398,
+      "file": "00008.jpg"
+    }
+  ],
+  "dpr": 3,
+  "comparisons": [
+    {
+      "variant": "classic",
+      "oldDpr": 1.5,
+      "newDpr": 3,
+      "oldCache": 720,
+      "newCache": 1260,
+      "logicalBoard": {
+        "x": 5.5,
+        "y": 198,
+        "w": 364,
+        "h": 404.44444444444446
+      }
+    },
+    {
+      "variant": "fusion",
+      "oldDpr": 1.5,
+      "newDpr": 3,
+      "oldCache": 720,
+      "newCache": 1260,
+      "logicalBoard": {
+        "x": 5.5,
+        "y": 198,
+        "w": 364,
+        "h": 404.44444444444446
+      }
+    }
+  ]
+}

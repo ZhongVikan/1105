@@ -1,0 +1,8 @@
+{
+  "protectedFilesChecked": 217,
+  "changes": [
+    "utils/audio.js"
+  ],
+  "originalAudioEventFunctionUnchanged": true,
+  "notes": "Only added audio queue cleanup; gameplay engines, AI, audio mappings, original images/fonts/stickers/configs remain unchanged."
+}

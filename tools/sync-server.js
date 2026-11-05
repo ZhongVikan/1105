@@ -1,0 +1,1 @@
+const fs=require('fs'),path=require('path'),root=path.resolve(__dirname,'..'),dest=path.join(root,'cloudfunctions/gameService/shared');fs.mkdirSync(dest,{recursive:true});for(const file of ['coordinates.js','rules-core.js','game-engine.js','stickers.js','motifs.js','fusion.js'])fs.copyFileSync(path.join(root,'utils',file),path.join(dest,file));
