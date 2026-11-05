@@ -28,14 +28,15 @@ function reduce(room,uid,input,now){
    if(p.kind==='undo'){assert(room.history.length,'没有历史记录');room.state=room.history.pop();room.deadline=now+60000;}
    if(p.kind==='restart'){room.state=G.newGame(undefined,room.state.variant||'dark');room.history=[];room.pauseUsed={};room.menuPauseUsed={};room.deadline=now+60000;if(room.seatPreference==='rotate'){const previous=room.red;room.red=room.black;room.black=previous;room.round=(room.round||0)+1;}}
    if(p.kind==='draw')room.state=G.finish(room.state,'draw');
-  }
+  }else room.deadline-=Math.max(0,p.until-now);
+
   room.rev++;room.event=input.accept?p.kind+'-accepted':p.kind+'-rejected';return room;
  }
  if(input.action==='request'){
   assert(room.black&&!room.pending&&!room.menuPause,'当前不能发起请求');assert(['undo','restart','draw'].includes(input.kind),'未知请求');assert(room.state.status==='playing'||input.kind==='restart','对局已结束');
   if(input.kind==='undo')assert(room.history.length,'没有可悔棋记录');
   assert(room.pauseUsed[side]!==room.state.ply,'每方每手只能请求一次');room.pauseUsed[side]=room.state.ply;
-  room.pending={kind:input.kind,by:side,until:now+15000};room.rev++;return room;
+  room.pending={kind:input.kind,by:side,until:now+15000};room.deadline+=15000;room.rev++;return room;
  }
  assert(room.black,'请等待对手');assert(room.state.status==='playing','对局已结束');
  if(input.action==='resign'){room.state={...room.state,status:'ended',reason:'resign',winner:R.opposite(side),motif:'认输'};room.pending=null;room.rev++;return room;}
