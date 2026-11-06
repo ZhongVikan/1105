@@ -43,7 +43,7 @@ class Renderer {
  }
  home(){const t=this.top,h=this.height,compact=h-this.bottom-t<570;this.text('智谋无声 · 棋局制胜',187.5,t+26,13,'#9b8369','center');this.text('暗棋大乱斗',187.5,t+72,compact?31:35,'#352a21','center',true);
   const hero=t+(compact?125:145);this.disc(139,hero,compact?29:38,'帥','red');this.disc(236,hero,compact?29:38,'將','black');this.disc(187,hero+(compact?19:26),compact?19:24,'','red',true);Object.entries(VARIANTS).forEach(([key,label],i)=>this.button(label,38+i*103,hero+(compact?39:59),93,30,()=>{this.runtime.variant=key;this.runtime.invalidate();},(this.runtime.variant||'dark')===key));
-  const by=hero+(compact?75:100),bh=compact?40:48,gap=compact?48:61;this.button('人机对战',38,by,299,bh,()=>this.runtime.open('difficulty'),true);this.button('邀请微信好友',38,by+gap,299,bh,()=>this.runtime.startGame({mode:'online'}));this.button('大厅匹配',38,by+gap*2,299,bh,()=>this.runtime.startGame({mode:'online',match:'1'}));
+  const by=hero+(compact?75:100),bh=compact?40:48,gap=compact?48:61;this.button('人机对战',38,by,299,bh,()=>this.runtime.open('difficulty'),true);this.button('邀请好友',38,by+gap,299,bh,()=>this.runtime.startGame({mode:'online'}));this.button('大厅匹配',38,by+gap*2,299,bh,()=>this.runtime.startGame({mode:'online',match:'1'}));
   this.button(this.runtime.profile?'已登录':'登录',38,by+gap*3,88,42,()=>this.runtime.open('profile'));this.button('游戏规则',144,by+gap*3,88,42,()=>this.runtime.open('rules'));this.button('设置',249,by+gap*3,88,42,()=>this.runtime.open('settings'));
   this.wrap(DISCLAIMER,28,Math.max(by+gap*3+64,h-this.bottom-70),319,10,'#9b948b',15);
  }
