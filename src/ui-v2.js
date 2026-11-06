@@ -11,7 +11,7 @@ function install(Renderer){const p=Renderer.prototype;
  p.v2Frame=function(key,x,y,w,h){const im=this.uiImage(key),m=meta[key];if(!im||!m)return false;const [sx,sy,sw,sh]=m.box,c=this.ctx;
  c.save();c.shadowColor='#32241455';c.shadowBlur=3;c.shadowOffsetY=2;this.rounded(x,y,w,h,14);c.fillStyle=key.endsWith('red')?'#ce342f':'#302c27';c.fill();c.shadowBlur=0;c.shadowOffsetY=0;
  this.rounded(x+2,y+2,w-4,h-4,12);c.save();c.clip();c.drawImage(im,sx+sw*.54,sy+10,2,sh-20,x+2,y+2,w-4,h-4);c.restore();c.strokeStyle='#efc77f';c.lineWidth=1;c.stroke();c.restore();return true;};
- p.text=function(label,x,y,size,color,align,bold){if(this._v2HomeFunctions){const functions=['暗棋','经典象棋','揭棋','邀请微信好友','与好友来一局','大厅匹配','在线匹配对手'];if(functions.includes(String(label)))color='#ffffff';}
+ p.text=function(label,x,y,size,color,align,bold){if(this._v2HomeFunctions){const functions=['暗棋','经典象棋','揭棋','邀请好友','与好友来一局','大厅匹配','在线匹配对手'];if(functions.includes(String(label)))color='#ffffff';}
  if(this._v2HomeFunctions&&color==='#ffffff'){this.ctx.save();this.ctx.shadowColor='#422600';this.ctx.shadowBlur=2;this.ctx.shadowOffsetY=1;old.text.call(this,label,x,y,size,color,align,bold);this.ctx.restore();return;}return old.text.call(this,label,x,y,size,color,align,bold);};
  p.home=function(){this._v2HomeFunctions=true;try{return old.home.call(this);}finally{this._v2HomeFunctions=false;}};
  p.referenceModeButton=function(variant,x,y,w,h,action){const im=this.uiImage('mode_reference');if(!im)return false;const selected=(this.runtime.variant||'dark')===variant,c=this.ctx;
