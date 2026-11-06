@@ -11,7 +11,7 @@ function install(Renderer){const p=Renderer.prototype;
  p.v2Frame=function(key,x,y,w,h){const im=this.uiImage(key),m=meta[key];if(!im||!m)return false;const [sx,sy,sw,sh]=m.box,c=this.ctx;
  c.save();c.shadowColor='#32241455';c.shadowBlur=3;c.shadowOffsetY=2;this.rounded(x,y,w,h,14);c.fillStyle=key.endsWith('red')?'#ce342f':'#302c27';c.fill();c.shadowBlur=0;c.shadowOffsetY=0;
  this.rounded(x+2,y+2,w-4,h-4,12);c.save();c.clip();c.drawImage(im,sx+sw*.54,sy+10,2,sh-20,x+2,y+2,w-4,h-4);c.restore();c.strokeStyle='#efc77f';c.lineWidth=1;c.stroke();c.restore();return true;};
- p.text=function(label,x,y,size,color,align,bold){if(this._v2HomeFunctions){const functions=['暗棋','经典象棋','揭棋','邀请好友','与好友来一局','大厅匹配','在线匹配对手'];if(functions.includes(String(label)))color='#ffffff';}
+ p.text=function(label,x,y,size,color,align,bold){if(this._v2HomeFunctions){const functions=['暗棋','经典象棋','揭棋','邀请微信好友','与好友来一局','大厅匹配','在线匹配对手'];if(functions.includes(String(label)))color='#ffffff';}
  if(this._v2HomeFunctions&&color==='#ffffff'){this.ctx.save();this.ctx.shadowColor='#422600';this.ctx.shadowBlur=2;this.ctx.shadowOffsetY=1;old.text.call(this,label,x,y,size,color,align,bold);this.ctx.restore();return;}return old.text.call(this,label,x,y,size,color,align,bold);};
  p.home=function(){this._v2HomeFunctions=true;try{return old.home.call(this);}finally{this._v2HomeFunctions=false;}};
  p.referenceModeButton=function(variant,x,y,w,h,action){const im=this.uiImage('mode_reference');if(!im)return false;const selected=(this.runtime.variant||'dark')===variant,c=this.ctx;
@@ -25,12 +25,11 @@ function install(Renderer){const p=Renderer.prototype;
  if(!this._homeLabelBackground){const layer=wx.createCanvas();layer.width=940;layer.height=551;const q=layer.getContext('2d');q.filter='saturate(.88) brightness(1.03)';q.drawImage(im,0,0);[[357,50,323,112,675],[619,264,163,84,788]].forEach(([bx,by,bw,bh,strip])=>q.drawImage(im,strip,by,1,bh,bx,by,bw,bh));q.filter='none';this._homeLabelBackground=layer;}
  const sprite=(sx,sy,sw,sh,r,action)=>{c.save();this.rounded(x+sx*k,y+sy*k,sw*k,sh*k,r*k);c.clip();c.drawImage(this._homeLabelBackground,sx,sy,sw,sh,x+sx*k,y+sy*k,sw*k,sh*k);c.restore();this.targets.push({x:x+sx*k,y:y+sy*k,w:sw*k,h:sh*k,action});};
  sprite(122,17,694,185,90,()=>this.runtime.open('difficulty'));
- this.uiButton('',x+51*k,y+227*k,414*k,156*k,()=>this.runtime.startGame({mode:'online'}),'blue');this.uiIcon('friends',x+112*k,y+305*k,30*k,'#fff');
- const inviteArrow={x:x+390*k,y:y+305*k,r:31*k};c.save();c.beginPath();c.arc(inviteArrow.x,inviteArrow.y,inviteArrow.r,0,Math.PI*2);c.fillStyle='rgba(10,79,205,.42)';c.fill();c.strokeStyle='rgba(255,255,255,.24)';c.lineWidth=1.5*k;c.stroke();c.restore();old.text.call(this,'›',inviteArrow.x,inviteArrow.y+1*k,48*k,'#fff','center',true);
+ sprite(51,227,414,156,60,()=>this.runtime.startGame({mode:'online'}));
  sprite(479,227,412,156,60,()=>this.runtime.startGame({mode:'online',match:'1'}));
  const label=(text,px,py,size,color,bold)=>old.text.call(this,text,x+px*k,y+py*k,size*k,color,'left',bold);
  label('人机对战',369,88,60,'#421d09',true);label('挑战智能对手，提升棋力',369,145,25,'#421d09',false);
- label('邀请好友',200,290,38,'#ffffff',true);label('与好友来一局',200,333,25,'#ffffff',false);label('大厅匹配',622,290,38,'#ffffff',true);label('在线匹配对手',622,333,25,'#ffffff',false);
+ label('大厅匹配',622,290,38,'#ffffff',true);label('在线匹配对手',622,333,25,'#ffffff',false);
  [[195,'profile'],[408,'rules'],[624,'settings']].forEach(([sx,scene],i)=>{
  const ek=k*1.22,cx=x+(sx+60.5)*k,ey=y+405*k+18,ew=121*ek,eh=104*ek;
  c.save();this.rounded(cx-ew/2,ey,ew,eh,52*ek);c.clip();c.drawImage(im,sx,405,121,104,cx-ew/2,ey,ew,eh);c.restore();
