@@ -70,14 +70,14 @@ function install(Renderer){const p=Renderer.prototype;
  const data=this.runtime.controller&&this.runtime.controller.data;captured.forEach((piece,i)=>this.orientedDisc(22+r+(i%columns)*step,y+r+Math.floor(i/columns)*step,r,piece,data,false,rotate));
  return Math.max(step,Math.ceil(captured.length/columns)*step);
  };
- p.player=function(side,name,avatar,y,captured,data,now,capturePlacement='below'){const active=data.turn===side&&!data.ended&&!data.waiting;
- if(!this.v2Frame('v2_player_bar_'+side,16,y,343,48))return old.player.call(this,side,name,avatar,y,captured,data,now);
+ p.player=function(side,name,avatar,y,captured,data,now,capturePlacement='below'){const active=data.turn===side&&!data.ended&&!data.waiting,rotateBar=this.beginPlayerPerspective(data,side,y);
+ if(!this.v2Frame('v2_player_bar_'+side,16,y,343,48)){this.endPlayerPerspective(rotateBar);return old.player.call(this,side,name,avatar,y,captured,data,now,capturePlacement);}
  const c=this.ctx;c.save();c.beginPath();c.arc(41,y+24,17,0,Math.PI*2);c.clip();const loaded=this.image(avatar,24,y+7,34,34);c.restore();
  if(!loaded&&!this.v2Art('v2_avatar_fallback_'+side,22,y+5,38,38))this.disc(41,y+23,16,side==='red'?'帥':'將',side);
  if(active){c.save();c.beginPath();c.arc(41,y+24,21,0,Math.PI*2);c.strokeStyle=side==='red'?'#b71e16':'#302720';c.lineWidth=1.5;c.stroke();c.restore();}
  const chars=Array.from((name||'').replace(/\s*·\s*/g,'·')),limit=active?5:13,short=chars.slice(0,limit).join('')+(chars.length>limit?'…':'');this.text(short,68,y+17,12,side==='red'?'#ac231a':'#191919');this.text(active?(data.paused?'计时暂停':'当前行棋'):'等待对方',68,y+34,11,'#9c8567');
  if(active){const g=c.createLinearGradient(268,y+5,268,y+44);g.addColorStop(0,'#fff080');g.addColorStop(1,'#ffc837');this.card(145,y+7,85,34,g,'#edb12c');const clock=this.uiImage('v2_player_bar_black');if(clock)c.drawImage(clock,536,101,48,45,149,y+13,20,20);this.text(data.seconds+'秒',223,y+25,19,data.seconds<=10?'#c33d2b':'#ae1c10','right',true);}
- if(capturePlacement==='below')this.captureTray(captured,y+58,335,data.mode==='local'&&side==='black');
+ this.endPlayerPerspective(rotateBar);if(capturePlacement==='below')this.captureTray(captured,y+58,335,data.mode==='local'&&side==='black');
  };
  p.profileScene=function(){old.profileScene.call(this);if(!this.runtime.loginBusy&&!this.runtime._privacyBusy){const b=this.profileButtonRect();this.v2Art('v2_profile_authorize_button',b.x,b.y,b.w,b.h);}};
  // The generated reference contains a matte outside the plaque. Canvas clips the
@@ -162,14 +162,14 @@ function install(Renderer){const p=Renderer.prototype;
  this.ctx.save();this.ctx.shadowColor='#51250c';this.ctx.shadowBlur=1;this.ctx.shadowOffsetY=1;this.text(title,x+w/2,y+h/2,Math.min(16,w/(Array.from(title).length+1)),'#fff9ed','center',true);this.ctx.restore();};
  const previousBattlePlayer=p.player;
  p.player=function(side,name,avatar,y,captured,data,now,capturePlacement='below'){
- const red=side==='red',sy=red?1257:198,active=data.turn===side&&!data.ended&&!data.waiting;
- if(!this.battleArt([44,sy,774,105],16,y,343,48,42,[red?320:500,sy+12,114,81,12,red?651:610,250]))return previousBattlePlayer.call(this,side,name,avatar,y,captured,data,now,capturePlacement);
+ const red=side==='red',sy=red?1257:198,active=data.turn===side&&!data.ended&&!data.waiting,rotateBar=this.beginPlayerPerspective(data,side,y);
+ if(!this.battleArt([44,sy,774,105],16,y,343,48,42,[red?320:500,sy+12,114,81,12,red?651:610,250])){this.endPlayerPerspective(rotateBar);return previousBattlePlayer.call(this,side,name,avatar,y,captured,data,now,capturePlacement);}
  // The source portrait is retained unless an actual player avatar is available.
  const c=this.ctx;c.save();c.beginPath();c.arc(45,y+24,18,0,Math.PI*2);c.clip();this.image(avatar,27,y+6,36,36);c.restore();
  const chars=Array.from((name||'').replace(/\s*·\s*/g,'·')),limit=active?5:13,short=chars.slice(0,limit).join('')+(chars.length>limit?'…':'');this.text(short,74,y+17,12.5,red?'#a52612':'#30302d','left',true);
  this.text(active?(data.paused?'计时暂停':'当前行棋'):'等待对方',74,y+34,11.5,'#a58c70','left',true);
  if(active){this.battleArt([590,1273,214,71],140.5,y+8,94,32,30,[665,1280,77,54,7,120]);this.ctx.save();this.ctx.shadowColor='#fff5ae';this.ctx.shadowOffsetY=0.6;this.text(data.seconds+'秒',226.5,y+25,19.5,'#c1200a','right',true);this.ctx.restore();}
- if(capturePlacement==='below')this.captureTray(captured,y+58,335,data.mode==='local'&&side==='black');
+ this.endPlayerPerspective(rotateBar);if(capturePlacement==='below')this.captureTray(captured,y+58,335,data.mode==='local'&&side==='black');
  };
  p.inferenceAssumptionSheet=function(controller){
  const opts=this.runtime.controller.data.inferenceAssumptionOptions||[],rows=Math.ceil(opts.length/2),h=86+rows*38+48,y=Math.max(this.top+18,(this.height-h)/2);this.overlay('rgba(47,36,28,.74)');this.card(27,y,321,h,'rgba(255,247,231,.78)','#e6c58d');this.text('选择假设身份',187.5,y+30,20,'#74512d','center',true);this.text('仅用于推理，不代表正式棋局已揭示',187.5,y+57,11,'#8f7354','center');opts.forEach((o,i)=>{const x=44+(i%2)*145,yy=y+78+Math.floor(i/2)*38;this.card(x,yy,133,32,'#fff1cf','#d3a05a');this.text(o.label,x+66.5,yy+16,14,o.side==='red'?'#c52d21':'#252525','center',true);this.targets.push({x,y:yy,w:133,h:32,action:()=>controller.chooseInferenceAssumption(o.side,o.kind)});});this.button('取消选择',135,y+h-48,105,46,()=>controller.cancelInferenceAssumption(),true);
