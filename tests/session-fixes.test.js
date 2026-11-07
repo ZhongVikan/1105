@@ -35,6 +35,16 @@ test('fake opponent rejects undo at the 80 percent boundary',t=>{
  }finally{Math.random=originalRandom;}
 });
 
+test('fake opponent allows only one undo request per side and ply',t=>{
+ t.mock.timers.enable({apis:['Date','setTimeout'],now:0});const originalRandom=Math.random;Math.random=()=>.2;
+ try{
+  const initial=G.newGame(undefined,'classic'),move=AI.moves(initial.pieces,'red')[0],after=G.move(initial,move.id,move.to).state;let message='';
+  const c=Object.assign({},Controller,{data:{...Controller.data},_fakeOpponent:{nickname:'拟真人'},_alive:true,_state:after,_history:[initial],_repetitionHistory:[],_clock:{start(){}},_audio:{},setData(p){Object.assign(this.data,p)},sync(){},toast(v){message=v},scheduleAI(){}});
+  c.requestFake('undo');t.mock.timers.tick(1560);assert.equal(c._state,after);assert.equal(c._fakeUndoUsed.red,after.ply);assert.equal(message,'对方拒绝了悔棋');
+  assert.equal(c.requestFake('undo'),undefined);assert.equal(message,'本手已请求过悔棋');assert.equal(c.data.pendingRequest,'');
+ }finally{Math.random=originalRandom;}
+});
+
 test('fake opponent stickers observe a 30 second cooldown',t=>{
  t.mock.timers.enable({apis:['Date','setTimeout'],now:0});const originalRandom=Math.random;Math.random=()=>0;
  try{let shown=0;const c=Object.assign({},Controller,{_fakeOpponent:{nickname:'拟真人'},_alive:true,_state:{status:'playing'},_fakeBotStickerCooldownUntil:0,showSticker(){shown++;}});assert.equal(c.queueFakeSticker(),true);assert.equal(c.queueFakeSticker(),false);assert.equal(c._fakeBotStickerCooldownUntil,30000);t.mock.timers.tick(250);assert.equal(shown,1);}
