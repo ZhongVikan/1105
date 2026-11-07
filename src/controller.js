@@ -15,6 +15,7 @@ function publicPiece(piece){
 }
 function publicState(state){const q=clone(state);q.pieces=state.pieces.map(publicPiece);q.captured=clone(state.captured||[]);return q;}
 function publicKey(state){return JSON.stringify({variant:state.variant,status:state.status,turn:state.turn,ply:state.ply,pendingChase:state.pendingChase||null,pieces:state.pieces.map(p=>{const hidden=!!p.hidden;return [p.id,p.x,p.y,hidden?R.controller(p):p.side,hidden?R.openingRole(p):p.kind,hidden];}).sort((a,b)=>a[0].localeCompare(b[0])),captured:(state.captured||[]).map(p=>[p.id,p.capturedBy,p.atPly]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])))});}
+function privateStateForOffline(state){return state&&Array.isArray(state.pieces)&&state.pieces.some(p=>p.hidden&&!p.kind)?G.newGame(undefined,state.variant||'dark'):state;}
 module.exports={
  data:{pieces:[],flipped:false,selectedId:'',turn:'red',topSide:'black',bottomSide:'red',topName:'黑方',bottomName:'红方',topCaptured:[],bottomCaptured:[],message:'',ply:0,showResult:false,resultTitle:'',resultDetail:'',unlucky:false,movingId:'',lastMoveId:'',revealId:'',captureId:'',ended:false,seconds:60,paused:false,mode:'ai',level:'normal',waiting:false,matchSeconds:0,matchFound:false,matchFoundAt:0,fakeOpponent:false,pendingRequest:'',pendingUntil:0,topAvatar:'',bottomAvatar:'',stickers,showStickers:false,stickerImage:'',stickerText:'',roomId:'',busy:false,manualPaused:false,inference:false,inferencePieces:[],inferenceSelectedId:'',inferenceLastMoveId:'',inferenceTopCaptured:[],inferenceBottomCaptured:[],inferenceMessage:'',inferenceAssumptionMenu:false,inferenceAssumptionOptions:[],onlineMatch:false,seatPreference:'rotate',seatMenu:false},
  async onLoad(options){this._alive=true;this._token=0;this._audio=this.runtime&&this.runtime.audio||new Audio();this._audio.refresh();this._clock=new Clock();this._history=[];this._repetitionHistory=[];this._countdownCueKey='';this._fakeOpponent=null;this._fakeRestartRejected=false;this._fakeUndoUsed={};this._fakePending=null;this._fakeBotStickerCooldownUntil=0;this._onlineSide=null;this._matchQueue=options.mode==='online'&&options.match==='1';this._matchStartedAt=0;this._matchFallbackAt=0;this._matchResolved=false;this._state=G.newGame(undefined,options.variant||'dark');this._mode=options.mode==='online'?'online':'ai';this._level=['easy','normal','hard'].includes(options.level)?options.level:'normal';this.setData({mode:this._mode,level:this._level,matchSeconds:0,pendingRequest:'',pendingUntil:0});
@@ -38,7 +39,7 @@ module.exports={
   try{
    try{const latest=await Online.call('poll',{roomId,rev:pending.rev});if(!this._alive||!this._room||this._room.roomId!==roomId)return;if(!latest.waiting){this.applyRoom(latest);return;}}catch(e){}
    if(!this._alive||this._mode!=='online'||!this._room||this._room.roomId!==roomId||!this._room.waiting)return;
-   const bot=FakeOpponents.pick();this._fakeOpponent=bot;this._fakeRestartRejected=false;this._fakeUndoUsed={};this._token++;clearInterval(this._poll);this._poll=null;this._room=null;this._mode='ai';this._level='hard';this._clock.start();Online.call('cancel').catch(()=>{});
+   const bot=FakeOpponents.pick();this.clearPresentation();this._state=privateStateForOffline(this._state);this._history=[];this._repetitionHistory=[];this._fakeOpponent=bot;this._fakeRestartRejected=false;this._fakeUndoUsed={};this._token++;clearInterval(this._poll);this._poll=null;this._room=null;this._mode='ai';this._level='hard';this._clock.start();Online.call('cancel').catch(()=>{});
    this.setData({mode:'ai',level:'hard',waiting:false,matchSeconds:0,roomId:'',fakeOpponent:true,manualPaused:false,paused:false,message:bot.nickname+' 已入座'});this.sync();this.scheduleAI();
   }finally{this._botActivating=false;}
  },
@@ -204,7 +205,7 @@ module.exports={
   this._hotseatStarting=true;
   const room=this._room;
   clearInterval(this._poll);this._poll=null;clearTimeout(this._matchFoundTimer);
-  this._token++;this._matchQueue=false;this._matchResolved=false;this._onlineSide=null;this._room=null;this._mode='local';this._fakeOpponent=null;this._clock.start();
+  this.clearPresentation();this._state=privateStateForOffline(this._state);this._history=[];this._repetitionHistory=[];this._token++;this._matchQueue=false;this._matchResolved=false;this._onlineSide=null;this._room=null;this._mode='local';this._fakeOpponent=null;this._clock.start();
   this.setData({mode:'local',waiting:false,onlineMatch:false,fakeOpponent:false,roomId:'',matchSeconds:0,matchFound:false,seatMenu:false,pendingRequest:'',pendingUntil:0,busy:false,manualPaused:false,paused:false,selectedId:'',showResult:false});
   this.sync();this._hotseatStarting=false;
   if(room)Online.call('cancel',{roomId:room.roomId,rev:room.rev}).catch(()=>{});

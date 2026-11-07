@@ -11,6 +11,10 @@ test('waiting friend room can switch to offline hotseat without keeping network 
  try{const c=page();assert.equal(c.startHotseat(),true);await Promise.resolve();assert.equal(c._mode,'local');assert.equal(c.data.mode,'local');assert.equal(c.data.waiting,false);assert.equal(c.data.onlineMatch,false);assert.equal(c._room,null);assert.deepEqual(calls,[['cancel',{roomId:'r',rev:2}]]);}finally{Online.call=original;}
 });
 
+test('hotseat restores private dark pieces when leaving a public waiting room',()=>{
+ const privateState=G.newGame(()=>.4,'dark'),publicState={...privateState,pieces:G.displayPieces(privateState.pieces)},c=page(publicState);c.startHotseat();assert.doesNotThrow(()=>G.validate(c._state));assert.ok(c._state.pieces.some(p=>p.hidden&&p.kind));let chosen=null;for(const p of c._state.pieces){for(let y=0;y<10&&!chosen;y++)for(let x=0;x<9&&!chosen;x++)if(G.legalAttempt(c._state.pieces,p.id,{x,y},'red'))chosen={id:p.id,to:{x,y}};if(chosen)break;}assert.ok(chosen);assert.equal(c.localMove(chosen.id,chosen.to),true);
+});
+
 test('hotseat mode lets both sides move manually and never schedules AI',async()=>{
  const c=page();c._mode='local';c.data={...c.data,mode:'local',waiting:false,onlineMatch:false};c._room=null;c._clock.start();let auto=0;c.scheduleAI=()=>{auto++;};
  const moveFor=side=>{const piece=c._state.pieces.find(p=>p.side===side);let to=null;for(let y=0;y<10&&!to;y++)for(let x=0;x<9;x++)if(G.legalAttempt(c._state.pieces,piece.id,{x,y},side))to={x,y};return {piece,to};};
