@@ -60,6 +60,9 @@ async function choose(pieces,side,level='normal',options={}){
  const complexity=Math.max(0,rootCount-28)+Math.floor(hiddenCount/5);
  const timeBudget=Math.max(effective==='hard'?175:effective==='easy'?40:95,base.ms-complexity*2);
  const nodeLimit=Math.max(effective==='hard'?760:effective==='easy'?80:320,base.nodes-complexity*12);
+ // Hidden-information positions have a much wider tree; keep their capture
+ // extension shorter so the budget reaches another main-search ply instead.
+ const qDepth=hiddenCount>0?(effective==='hard'?2:1):(effective==='hard'?3:2);
  const started=Date.now(),deadline=started+timeBudget;
  const visits=new Map();for(const state of (options.history||[]).slice(-120)){const k=Repetition.key(state);visits.set(k,(visits.get(k)||0)+1);}
  const penalties=new Map(list.map(m=>{const next=apply(board,m,side),k=Repetition.key({pieces:next,turn:R.opposite(side)});return [m,Math.min(2400,(visits.get(k)||0)*600)];}));
@@ -81,7 +84,7 @@ async function choose(pieces,side,level='normal',options={}){
  }
  for(let depth=1;depth<=base.depth;depth++){
   let alpha=-Infinity,choice=best;const scored=[];
-  try{for(const m of ordered(board,list,best)){const penalty=penalties.get(m),bonus=rootBonus(board,m)+openingBonus(board,m,(options.history||[]).length),v=-await search(apply(board,m,side),R.opposite(side),depth-1,-Infinity,Infinity,1,effective==='easy'?0:effective==='hard'?3:2)-penalty+bonus;scored.push({m,v});if(v>alpha){alpha=v;choice=m;}}}catch(e){if(e!==STOP)throw e;break;}
+  try{for(const m of ordered(board,list,best)){const penalty=penalties.get(m),bonus=rootBonus(board,m)+openingBonus(board,m,(options.history||[]).length),v=-await search(apply(board,m,side),R.opposite(side),depth-1,-Infinity,Infinity,1,qDepth)-penalty+bonus;scored.push({m,v});if(v>alpha){alpha=v;choice=m;}}}catch(e){if(e!==STOP)throw e;break;}
   ranked=scored;best=choice;completed=depth;if(board.length>=30&&(options.history||[]).length<=3){const near=scored.filter(v=>v.v>=alpha-(effective==='easy'?70:48));best=near[Math.min(near.length-1,Math.floor(random()*near.length))].m;}if(alpha>99000)break;
  }
  if(effective!=='hard'&&!classicOpening)best=Difficulty.select(ranked,effective,random)||best;

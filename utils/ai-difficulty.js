@@ -3,8 +3,8 @@
 // ceiling, `cpu` is the active CPU budget, and `nodes`/`depth` are independent caps.
 const profiles={
  easy:{target:.30,ms:100,cpu:40,nodes:350,depth:3,mistake:.58,tolerance:320},
- normal:{target:.60,ms:400,cpu:180,nodes:25000,depth:7,mistake:.08,tolerance:65},
- hard:{target:.80,ms:900,cpu:350,nodes:60000,depth:8,mistake:0,tolerance:0}
+ normal:{target:.60,ms:550,cpu:280,nodes:60000,depth:8,mistake:.08,tolerance:65},
+ hard:{target:.80,ms:1200,cpu:700,nodes:200000,depth:11,mistake:0,tolerance:0}
 };
 
 // WeChat's benchmarkLevel is a coarse device-performance score. Keep the threshold
