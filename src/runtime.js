@@ -6,6 +6,16 @@ const Online = require('../utils/online');
 const config = require('../config');
 const Audio = require('../utils/audio');
 
+function inviteRoom(query){
+ let room=query&&query.room;
+ if(typeof query==='string'){
+  for(const part of query.replace(/^\?/,'').split('&')){const bits=part.split('=');let key=bits.shift()||'',value=bits.join('=');try{key=decodeURIComponent(key);value=decodeURIComponent(value);}catch(e){}if(key==='room'){room=value;break;}}
+ }
+ if(Array.isArray(room))room=room[0];
+ try{room=decodeURIComponent(String(room||''));}catch(e){room=String(room||'');}
+ return /^[a-f0-9]{32}$/i.test(room)?room.toLowerCase():'';
+}
+
 class Runtime {
  constructor(){
   this.variant='dark';this.scene='home';this.controller=null;this.returnScene='home';this.scroll=0;
@@ -34,8 +44,8 @@ class Runtime {
  toast(title){wx.showToast({title,icon:'none'});}
  invalidate(){this.renderer.invalidate();}
  invite(query){
-  const room=query&&query.room;if(!room||!/^[a-f0-9]{32}$/.test(room))return;
-  if(this.controller&&this.controller.data.roomId===room)return;
+  const room=inviteRoom(query);if(!room)return;
+  const currentRoom=this.controller&&(this.controller.data.roomId||(this.controller._room&&this.controller._room.roomId));if(currentRoom===room)return;
   if(this._inviteRoom===room&&(
    this._inviteBusy||this._invitePromptRoom===room||
    this.pendingRoom===room&&this.scene==='profile'
@@ -47,7 +57,7 @@ class Runtime {
    wx.showModal({title:'加入好友房间',content:'离开当前棋局并尝试加入好友房间？离开不会暂停真人局计时。',success:r=>{if(r.confirm)this.enterInvite();else{this.pendingRoom='';this._inviteRoom='';}},complete:()=>{this._invitePromptRoom='';}});
   }else this.enterInvite();
  }
- enterInvite(){if(this._inviteBusy)return;if(!this.profile){this.open('profile');return;}const room=this.pendingRoom;if(!room)return;this.pendingRoom='';this._inviteBusy=true;Promise.resolve(this.startGame({mode:'online',room})).finally(()=>{if(this._inviteRoom===room){this._inviteBusy=false;this._inviteRoom='';}});}
+ enterInvite(){if(this._inviteBusy)return;if(!this.profile){this.open('profile');return;}const room=this.pendingRoom;if(!room)return;this._inviteBusy=true;Promise.resolve(this.startGame({mode:'online',room})).then(ok=>{if(ok)this.pendingRoom='';if(this._inviteRoom===room){this._inviteBusy=false;this._inviteRoom=ok?'':room;}}).catch(()=>{if(this._inviteRoom===room){this._inviteBusy=false;this._inviteRoom=room;}});}
  open(scene){
   if(scene==='rules')this.ruleVariant=this.controller?this.controller._state.variant:this.variant;
   this.destroyAuthButton();this.returnScene=this.controller?'game':'home';this.scene=scene;this.scroll=0;this.invalidate();
@@ -62,15 +72,16 @@ class Runtime {
   this.destroyAuthButton();if(this.controller)this.controller.onUnload();
   // Never enter the game scene until board/piece assets are decoded and reusable.
   // preloadGameAssets is cached, so after the first warm-up this resolves immediately.
-  if(this.renderer.preloadGameAssets)await this.renderer.preloadGameAssets();
+  try{if(this.renderer.preloadGameAssets)await this.renderer.preloadGameAssets();}catch(e){this.toast('游戏资源加载失败，请重试');return false;}
   const c={...definition,data:JSON.parse(JSON.stringify(definition.data)),runtime:this};
   c.setData=patch=>{if(patch.showResult&&!c.data.showResult)c._resultShownAt=Date.now();const changed=Object.keys(patch).some(k=>c.data[k]!==patch[k]);Object.assign(c.data,patch);if(changed&&this.controller===c)this.invalidate();};
   this.controller=c;this.scene='game';this.invalidate();
-  try{await c.onLoad(options);}catch(e){if(this.controller===c){this.home();this.toast('游戏启动失败：'+e.message);}}
+  try{await c.onLoad(options);}catch(e){if(this.controller===c){this.home();this.toast('游戏启动失败：'+e.message);}return false;}
+  return this.controller===c&&(!(options&&options.mode==='online')||!!c._room);
  }
  toggleSetting(key){const s=S.settings();s[key]=!s[key];S.setSettings(s);this.audio.refresh();this.invalidate();}
- shareInfo(){return this.controller&&this.controller.data.roomId?this.controller.onShareAppMessage():{title:'暗棋大乱斗 · 真假难辨，步步为营',query:''};}
- share(){if(wx.shareAppMessage)wx.shareAppMessage(this.shareInfo());else this.toast('当前环境不支持分享');}
+ shareInfo(){return this.controller&&(this.controller.data.roomId||(this.controller._room&&this.controller._room.roomId))?this.controller.onShareAppMessage():{title:'暗棋大乱斗 · 真假难辨，步步为营',query:''};}
+ share(){const info=this.shareInfo();if(this.controller&&this.controller._mode==='online'&&this.controller.data.waiting&&!info.query){this.toast('房间创建中，请稍候');return false;}if(wx.shareAppMessage){wx.shareAppMessage(info);return true;}this.toast('当前环境不支持分享');return false;}
  destroyAuthButton(){if(this.authButton){this.authButton.destroy();this.authButton=null;}}
  makeAuthButton(){
   if(!this._privacyApproved||this.scene!=='profile')return;
