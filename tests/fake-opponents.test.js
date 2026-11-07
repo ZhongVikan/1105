@@ -15,3 +15,11 @@ test('fake match first local move is playable after fallback',async()=>{
  a.equal(c._state.ply,1);a.equal(c._state.turn,'black');a.equal(c.data.selectedId,'');
  c._alive=false;
 });
+test('fake rematch rejection sends the next retry back to matchmaking',t=>{
+ t.mock.timers.enable({apis:['Date','setTimeout'],now:0});const originalRandom=Math.random,values=[0,.9];Math.random=()=>values.shift()??.9;
+ try{
+  let started=null;const state={...G.newGame(undefined,'classic'),status:'ended'};
+  const c=Object.assign({},Def,{data:{...Def.data,showResult:true},_fakeOpponent:{nickname:'拟真人'},_fakeRestartRejected:false,_alive:true,_state:state,_history:[],_repetitionHistory:[],_token:0,_clock:{start(){}},_audio:{},runtime:{variant:'classic',startGame(options){started=options;}},setData(p){Object.assign(this.data,p)},sync(){},toast(){},scheduleAI(){}});
+  c.requestFake('restart');t.mock.timers.tick(1200);a.equal(c._fakeRestartRejected,true);c.restart();a.deepEqual(started,{mode:'online',match:'1',variant:'classic'});a.equal(c._fakeRestartRejected,false);
+ }finally{Math.random=originalRandom;}
+});
