@@ -1,5 +1,5 @@
 const FX=require('./battle-effects'),BattleTimeline=require('./battle-timeline');
-const G=require('../utils/game-engine'),R=require('../utils/rules-core'),S=require('../utils/storage'),AI=require('../utils/ai'),Clock=require('../utils/turn-clock'),Audio=require('../utils/audio'),Online=require('../utils/online'),stickers=require('../utils/stickers');
+const G=require('../utils/game-engine'),R=require('../utils/rules-core'),S=require('../utils/storage'),AI=require('../utils/ai'),AIWorker=require('../utils/ai-worker-client'),Clock=require('../utils/turn-clock'),Audio=require('../utils/audio'),Online=require('../utils/online'),stickers=require('../utils/stickers');
 const Repetition=require('../utils/repetition'),Fusion=require('../utils/fusion'),FakeOpponents=require('../utils/fake-opponents');
 const names={red:'红方',black:'黑方'};
 const MATCH_HUMAN_WAIT_SECONDS=10,MATCH_FAKE_MAX_SECONDS=20;
@@ -146,8 +146,8 @@ module.exports={
    const settle=this.motion?Math.max(0,FX.timing(this.motion.move).total-(Date.now()-this.motion.at)):0;
    if(settle)await new Promise(resolve=>{this._aiDelayResolve=resolve;this._aiDelayTimer=setTimeout(()=>{this._aiDelayResolve=null;resolve();},settle);});
    if(!this._alive||this._hidden||this._clock.reasons.size||token!==this._token||this._state!==snapshot)return;
-   const aiLevel=this._fakeOpponent?'hard':this._level;
-   const m=snapshot.variant==='fusion'?await require('../utils/fusion-ai').choose(snapshot,aiLevel,{cancel:()=>!this._alive||this._hidden||this._clock.reasons.size>0||token!==this._token||this._state!==snapshot}):await AI.choose(snapshot.pieces,'black',aiLevel,{history:[...(this._repetitionHistory||this._history||[]),snapshot],cancel:()=>!this._alive||this._hidden||this._clock.reasons.size>0||token!==this._token||this._state!==snapshot,allowMove:move=>{const repeat=this.repetitionForMove(move);return !repeat||repeat.kind!=='perpetual'||repeat.offender!=='black';}});
+   const aiLevel=this._fakeOpponent?'hard':this._level,searchHistory=[...(this._repetitionHistory||this._history||[]),snapshot],cancel=()=>!this._alive||this._hidden||this._clock.reasons.size>0||token!==this._token||this._state!==snapshot;
+   const m=snapshot.variant==='fusion'?await AIWorker.choose('fusion',{state:snapshot,history:searchHistory},aiLevel,{cancel}):await AIWorker.choose('classic',{pieces:snapshot.pieces,state:snapshot,history:searchHistory},aiLevel,{history:searchHistory,cancel,allowMove:move=>{const repeat=this.repetitionForMove(move);return !repeat||repeat.kind!=='perpetual'||repeat.offender!=='black';}});
    const thinkFloor=this._fakeOpponent?900+Math.floor(Math.random()*3300):2000;const wait=Math.max(0,thinkFloor-(Date.now()-started));if(wait&&this._alive&&token===this._token)await new Promise(resolve=>{this._aiDelayResolve=resolve;this._aiDelayTimer=setTimeout(()=>{this._aiDelayResolve=null;resolve();},wait);});
    if(token===this._token&&this._alive&&!this._hidden&&this._state===snapshot&&!this._clock.reasons.size){if(m){this.localMove(m.id,m.to);this.queueFakeSticker();}else if(snapshot.variant!=='fusion'){const moves=AI.moves(AI.publicBoard(snapshot.pieces),'black');if(moves.length&&moves.every(move=>{const repeat=this.repetitionForMove(move);return repeat&&repeat.kind==='perpetual'&&repeat.offender==='black';}))this.endLongCheck('black');}}
   }finally{this._aiThinking=false;if(this._alive)setTimeout(()=>this.scheduleAI(),50);}

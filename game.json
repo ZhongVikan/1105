@@ -1,6 +1,7 @@
 {
   "deviceOrientation": "portrait",
   "showStatusBar": false,
+  "workers": "workers",
   "subpackages": [
     {
       "name": "stickersA",
