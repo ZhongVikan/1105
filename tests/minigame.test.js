@@ -16,6 +16,15 @@ test('Canvas touch maps all 90 points at four screen sizes and both orientations
  }finally{teardown(app);}}
 });
 test('hide/show preserves deadline; settings and rule scenes keep the same match',async()=>{const {events}=mock();const Runtime=require('../src/runtime'),app=new Runtime();app.start();await app.startGame({mode:'ai'});try{const c=app.controller,deadline=c._clock.deadline;app.open('settings');app.toggleSetting('sound');a.equal(require('../utils/storage').settings().sound,false);app.back();a.equal(app.controller,c);events.Hide();a.equal(c._hidden,true);events.Show({query:{}});a.equal(c._hidden,false);a.equal(c._clock.deadline,deadline);app.open('rules');const labels=[],text=app.renderer.secondaryText;app.renderer.secondaryText=function(label,...args){labels.push(label);return text.call(this,label,...args);};app.renderer.draw();a.ok(Number.isFinite(app.renderer.maxScroll)&&app.renderer.maxScroll>=0);a.ok(labels.includes('开局布阵'));for(const hidden of ['其他操作','人机对局长将','神之一手'])a.ok(!labels.includes(hidden));app.renderer.secondaryText=text;app.back();a.equal(app.controller,c);}finally{teardown(app);}});
+test('navigation refreshes target scene for home and AI controls',async()=>{
+ mock();const Runtime=require('../src/runtime'),app=new Runtime();
+ const tap=target=>{const x=(target.x+target.w/2)*app.renderer.scale+(app.renderer.offsetX||0),y=(target.y+target.h/2)*app.renderer.scale;app.touchStart({touches:[{clientX:x,clientY:y}]});app.touchEnd({changedTouches:[{clientX:x,clientY:y}]});};
+ try{
+  app.open('difficulty');app.renderer.draw();a.equal(app.renderer._targetState.scene,'difficulty');tap(app.renderer.targets.at(-1));
+  a.equal(app.scene,'home');app.renderer.draw();a.equal(app.renderer._targetState.scene,'home');tap(app.renderer.targets.find(t=>t.w>300&&t.y>420&&t.y<520));
+  a.equal(app.scene,'difficulty');app.renderer.draw();await app.startGame({mode:'ai'});app.renderer.draw();a.equal(app.renderer._targetState.scene,'game');let paused=0;app.controller.togglePause=()=>paused++;tap(app.renderer.targets.find(t=>t.x>280&&t.y<100));a.equal(paused,1);
+ }finally{teardown(app);}
+});
 test('mini game invitation uses query instead of a miniprogram page path',()=>{const def=require('../src/controller'),share=def.onShareAppMessage.call({data:{roomId:'a'.repeat(32)}});a.equal(share.query,'room='+'a'.repeat(32));a.equal(share.path,undefined);});
 
 test('home variant tabs launch selected rules and restart preserves variant',async()=>{mock();const Runtime=require('../src/runtime'),app=new Runtime();try{for(const [i,variant] of ['dark','classic','jieqi','fusion'].entries()){app.home();app.renderer.draw();app.renderer.targets[i].action();a.equal(app.variant,variant);await app.startGame({mode:'ai'});const c=app.controller;a.equal(c._state.variant,variant);c.modal=(title,body,fn)=>fn();c.restart();a.equal(c._state.variant,variant);app.open('rules');app.renderer.draw();}}finally{teardown(app);}});
