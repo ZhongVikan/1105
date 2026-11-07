@@ -67,7 +67,7 @@ function install(Renderer){const p=Renderer.prototype;
  const c=this.ctx;c.save();c.translate(b.x,b.y);c.scale(b.w/720,b.h/800);for(const p of this._captureHints.points){const q=this.boardPoint(p,d.flipped);if(p.capture)this.pieceRing(q.x,q.y,33,'#62b878');else{c.save();c.beginPath();c.arc(q.x,q.y,12,0,Math.PI*2);c.strokeStyle='#ffffff';c.lineWidth=2;c.stroke();c.restore();}}c.restore();
  };
  p.captureTray=function(captured,y,width=335){const r=33*this.boardRect.w/720*.8,step=2*r+3,columns=Math.max(1,Math.floor(width/step));
- captured.forEach((piece,i)=>this.disc(22+r+(i%columns)*step,y+r+Math.floor(i/columns)*step,r,piece.text,piece.side));
+ captured.forEach((piece,i)=>this.orientedDisc(22+r+(i%columns)*step,y+r+Math.floor(i/columns)*step,r,piece,this.runtime.controller&&this.runtime.controller.data));
  return Math.max(step,Math.ceil(captured.length/columns)*step);
  };
  p.player=function(side,name,avatar,y,captured,data,now,capturePlacement='below'){const active=data.turn===side&&!data.ended&&!data.waiting;
@@ -103,7 +103,7 @@ function install(Renderer){const p=Renderer.prototype;
  const warning=FX.warningPhase(c,now),variantTitle=({dark:'暗棋',classic:'经典象棋',jieqi:'揭棋',fusion:'合棋'})[c._state&&c._state.variant||this.runtime.variant||'dark'];
  this.header(inference?'推理中':variantTitle+' · 对局中',false);
  if(!inference&&!d.waiting&&!d.ended)this.button('推理',16,this.top-16,56,36,()=>c.enterInference());
- if(!inference&&d.mode==='ai'&&!d.fakeOpponent&&!d.ended)this.button('暂停',375-72,this.top-16,56,36,()=>c.togglePause());
+ if(!inference&&(d.mode==='ai'||d.mode==='local')&&!d.fakeOpponent&&!d.ended)this.button('暂停',375-72,this.top-16,56,36,()=>c.togglePause());
  this.player(d.topSide,d.topName,d.topAvatar,this.top+28,topCaptured,d,now);if(d.turn===d.topSide&&!d.paused&&!inference)FX.danger(this,this.top+28,warning);
  this.board(view,b,motion,visualNow);
  if(!motion)this.captureHints(c,b);
@@ -121,7 +121,7 @@ function install(Renderer){const p=Renderer.prototype;
  if(d.waiting){const y=this.top+145;this.overlay();const expanded=!d.onlineMatch&&d.seatMenu;if(d.onlineMatch){this.card(27,y,321,187,'rgba(255,247,231,.78)','#e6c58d');this.text('正在匹配棋友',187.5,y+33,22,'#74512d','center',true);this.text('已等待 '+Math.max(0,d.matchSeconds||0)+' 秒',187.5,y+61,14,'#a47745','center');this.button('取消匹配',54,y+90,267,48,()=>c.cancelWait(),true);}else{this.card(27,y,321,expanded?420:345,'rgba(255,247,231,.78)','#e6c58d');this.text('等待棋友入座',187.5,y+33,22,'#74512d','center',true);this.button('邀请微信好友',54,y+66,267,48,()=>this.runtime.share(),true);this.button('面对面模式',54,y+124,267,48,()=>c.startHotseat(),true);this.button('取消等待',54,y+182,267,48,()=>c.cancelWait(),true);const labels={red:'红方',black:'黑方',rotate:'轮换'},label=labels[d.seatPreference]||'轮换';this.button('对局设置',54,y+240,267,48,()=>c.toggleSeatMenu(),true);if(!d.seatMenu){this.text('我方：',112,y+302,13,'#8a6b4a','right');if(label==='轮换'){this.text('轮',132,y+302,13,'#c52d21','left',true);this.text('换',145,y+302,13,'#252525','left',true);}else this.text(label,132,y+302,13,label==='红方'?'#c52d21':'#252525','left',true);}if(d.seatMenu){[['red','红方'],['black','黑方'],['rotate','轮换']].forEach(([value,text],i)=>{const oy=y+289+i*36;if(value==='rotate'){this.text('轮',178,oy+17,16,'#c52d21','center',true);this.text('换',196,oy+17,16,'#252525','center',true);}else this.text(text,187.5,oy+17,16,value==='red'?'#c52d21':'#252525','center',true);this.targets.push({x:54,y:oy,w:267,h:36,action:()=>c.setSeatPreference(value)});});}}}
  if(d.inference&&d.inferenceAssumptionMenu)this.inferenceAssumptionSheet(c);
  if(d.showStickers&&!inference)this.stickerSheet(c);
- if(d.showResult)this.result(c);if(!inference&&d.manualPaused){this.overlay();const y=Math.max(this.top+60,(this.height-180)/2);this.card(35,y,305,180);this.text('对局已暂停',187.5,y+39,22,'#74512d','center',true);this.text('计时与 AI 均已暂停',187.5,y+76,13,'#927650','center');this.button('继续对局',64,y+110,247,46,()=>c.togglePause(),true);}
+ if(d.showResult)this.result(c);if(!inference&&d.manualPaused){this.overlay();const y=Math.max(this.top+60,(this.height-180)/2);this.card(35,y,305,180);this.text('对局已暂停',187.5,y+39,22,'#74512d','center',true);this.text(d.mode==='local'?'计时已暂停':'计时与 AI 均已暂停',187.5,y+76,13,'#927650','center');this.button('继续对局',64,y+110,247,46,()=>c.togglePause(),true);}
  };
 
  // Reference battle controls; cached source artwork, with live labels and timers.
