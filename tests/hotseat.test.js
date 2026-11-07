@@ -27,5 +27,14 @@ test('hotseat rotates black pieces and supports a timer-only pause',()=>{
  assert.equal(r.pieceShouldRotate({mode:'local'},{hidden:false,side:'black'}),true);
  assert.equal(r.pieceShouldRotate({mode:'ai'},{hidden:false,side:'black'}),false);
  const rotations=[];r.ctx={save(){},restore(){},translate(){},rotate(angle){rotations.push(angle)}};r.disc=()=>{};r.orientedDisc(0,0,10,{side:'red',hidden:false,text:'兵'},{mode:'local'},false,true);assert.deepEqual(rotations,[Math.PI]);rotations.length=0;r.orientedDisc(0,0,10,{side:'black',hidden:false,text:'卒'},{mode:'local'},false,false);assert.deepEqual(rotations,[]);rotations.length=0;r.drawCapturedRegion([{text:'兵',side:'red'}],{mode:'local'},'black',10,10,5,12,3,()=>{});assert.deepEqual(rotations,[Math.PI]);
- const c=page();c._mode='local';c.data={...c.data,mode:'local',waiting:false};c._room=null;c._clock.start();c.togglePause();assert.equal(c.data.manualPaused,true);assert.ok(c._clock.reasons.has('manual'));c.togglePause();assert.equal(c.data.manualPaused,false);assert.equal(c._clock.reasons.has('manual'),false);
+ const c=page();c._mode='local';c.data={...c.data,mode:'local',waiting:false};c._room=null;c._clock.start();const flipped=c.data.flipped;c.flip();assert.equal(c.data.flipped,!flipped);c.togglePause();assert.equal(c.data.manualPaused,true);assert.ok(c._clock.reasons.has('manual'));c.togglePause();assert.equal(c.data.manualPaused,false);assert.equal(c._clock.reasons.has('manual'),false);
+});
+
+test('V2 board rendering keeps local mode when drawing its reduced view',()=>{
+ const savedWx=global.wx,ctx={save(){},restore(){},translate(){},scale(){},drawImage(){},setTransform(){},clearRect(){}};global.wx={createCanvas:()=>({getContext:()=>ctx})};
+ try{
+  const r=Object.create(Renderer.prototype),seen=[];r.runtime={controller:{data:{mode:'local'}}};r.ctx=ctx;r.scale=1;r.dpr=1;r.boardCache={};r._boardRasterScale=1;r.boardPoint=()=>({x:10,y:10});r.orientedDisc=(x,y,size,piece,data)=>seen.push(data);
+  r.board({pieces:[{id:'black',x:0,y:0,side:'black',text:'車',hidden:false}],flipped:false,selectedId:''},{x:0,y:0,w:720,h:800},null,Date.now());
+  assert.equal(seen.length,1);assert.equal(seen[0].mode,'local');
+ }finally{if(savedWx===undefined)delete global.wx;else global.wx=savedWx;}
 });

@@ -66,7 +66,7 @@ class Renderer {
  }
   game(now){const c=this.runtime.controller;if(!c)return;const d=c.data;this.layoutBoard(d);const b=this.boardRect;this.header(d.inference?'推理中':VARIANTS[c._state&&c._state.variant||this.runtime.variant||'dark']+' · 对局中',false);if(!d.inference&&!d.waiting&&!d.ended)this.button('推理',16,Math.max(4,this.top-68),56,36,()=>c.enterInference());if(!d.inference&&(d.mode==='ai'||d.mode==='local')&&!d.fakeOpponent&&!d.ended)this.button('暂停',16,this.top-16,56,36,()=>c.togglePause());this.player(d.topSide,d.topName,d.topAvatar,this.top+28,d.topCaptured,d,now);
   this.board(d,b,c.motion,now);const bottom=b.y+b.h+12;this.player(d.bottomSide,d.bottomName,d.bottomAvatar,bottom,d.bottomCaptured,d,now);
-  this.text(d.message||'准备棋局…',20,bottom+114+this.trayExtra,12,'#846545');const by=bottom+132+this.trayExtra;[['悔棋','undo'],...(d.mode==='local'?[]:[['翻转','flip']]),['重开','restart'],['更多','more']].forEach(([label,fn],i)=>this.button(label,16+i*88,by,79,46,()=>c[fn]()));
+  this.text(d.message||'准备棋局…',20,bottom+114+this.trayExtra,12,'#846545');const by=bottom+132+this.trayExtra;[['悔棋','undo'],['翻转','flip'],['重开','restart'],['更多','more']].forEach(([label,fn],i)=>this.button(label,16+i*88,by,79,46,()=>c[fn]()));
   if(!d.waiting&&!d.ended)this.button('表情',301,bottom+100+this.trayExtra,58,28,()=>c.toggleStickers());
   if(d.stickerImage){this.image(d.stickerImage,102,b.y+b.h*.25,171,171);}
   if(d.waiting){const y=this.top+145;this.overlay();const expanded=!d.onlineMatch&&d.seatMenu;this.card(27,y,321,d.onlineMatch?187:expanded?420:345,'rgba(255,247,231,.78)','#e6c58d');if(d.onlineMatch){this.text('正在匹配棋友',187.5,y+33,22,'#74512d','center',true);this.text('已等待 '+Math.max(0,d.matchSeconds||0)+' 秒',187.5,y+61,14,'#a47745','center');this.button('取消匹配',54,y+90,267,48,()=>c.cancelWait(),true);}else{this.text('等待棋友入座',187.5,y+33,22,'#74512d','center',true);this.button('邀请微信好友',54,y+66,267,48,()=>this.runtime.share(),true);this.button('面对面模式',54,y+124,267,48,()=>c.startHotseat(),true);this.button('取消等待',54,y+182,267,48,()=>c.cancelWait(),true);const labels={red:'红方',black:'黑方',rotate:'轮换'},label=labels[d.seatPreference]||'轮换';this.button('对局设置',54,y+240,267,48,()=>c.toggleSeatMenu(),true);if(!d.seatMenu){this.text('我方：',112,y+302,13,'#8a6b4a','right');if(label==='轮换'){this.text('轮',132,y+302,13,'#c52d21','left',true);this.text('换',145,y+302,13,'#252525','left',true);}else this.text(label,132,y+302,13,label==='红方'?'#c52d21':'#252525','left',true);}if(d.seatMenu){[['red','红方'],['black','黑方'],['rotate','轮换']].forEach(([value,text],i)=>{const oy=y+289+i*36;if(value==='rotate'){this.text('轮',178,oy+17,16,'#c52d21','center',true);this.text('换',196,oy+17,16,'#252525','center',true);}else this.text(text,187.5,oy+17,16,value==='red'?'#c52d21':'#252525','center',true);this.targets.push({x:54,y:oy,w:267,h:36,action:()=>c.setSeatPreference(value)});});}}}
@@ -74,22 +74,22 @@ class Renderer {
   if(d.showResult)this.result(c);if(d.manualPaused){this.overlay();const y=Math.max(this.top+60,(this.height-180)/2);this.card(35,y,305,180);this.text('对局已暂停',187.5,y+39,22,'#74512d','center',true);this.text(d.mode==='local'?'计时已暂停':'计时与 AI 均已暂停',187.5,y+76,13,'#927650','center');this.button('继续对局',64,y+110,247,46,()=>c.togglePause(),true);}
  }
  board(d,b,motion,now=Date.now()){
-  const ctx=this.ctx;ctx.save();ctx.translate(b.x,b.y);ctx.scale(b.w/720,b.h/800);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+  const rotationData=this.runtime&&this.runtime.controller&&this.runtime.controller.data||d,ctx=this.ctx;ctx.save();ctx.translate(b.x,b.y);ctx.scale(b.w/720,b.h/800);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
   const raster=Resolution.boardScale(b.w,this.scale||1,this.dpr||1);if((this._boardRasterScale||1)!==raster){this.boardCache=null;this.stationaryKey=null;}this._boardRasterScale=raster;
   if(!this.boardCache){const canvas=wx.createCanvas();canvas.width=Math.round(720*raster);canvas.height=Math.round(800*raster);const original=this.ctx;this.ctx=canvas.getContext('2d');this.ctx.setTransform(raster,0,0,raster,0,0);this.paintBoardBase();this.ctx=original;this.boardCache=canvas;}
   ctx.drawImage(this.boardCache,0,0,720,800);
   const elapsed=motion?Math.max(0,now-motion.at):Infinity,moving=motion&&elapsed<(motion.timings||FX.timing(motion.move)).total?motion.move.id:null;
-  const signature=[d.pieces,d.flipped,d.selectedId,moving,this.uiRevision||0];
+  const signature=[d.pieces,d.flipped,d.mode||rotationData.mode,d.selectedId,moving,this.uiRevision||0];
   if(!this.stationaryKey||signature.some((v,i)=>v!==this.stationaryKey[i])){
    const layer=this.stationaryLayer||wx.createCanvas(),width=Math.round(720*raster),height=Math.round(800*raster);if(layer.width!==width)layer.width=width;if(layer.height!==height)layer.height=height;const original=this.ctx;this.ctx=layer.getContext('2d');this.ctx.setTransform(raster,0,0,raster,0,0);this.ctx.clearRect(0,0,720,800);
-   for(const p of d.pieces){if(p.id===moving||p.id===d.selectedId)continue;const pos=this.boardPoint(p,d.flipped);this.orientedDisc(pos.x,pos.y,33,p,d);}
+   for(const p of d.pieces){if(p.id===moving||p.id===d.selectedId)continue;const pos=this.boardPoint(p,d.flipped);this.orientedDisc(pos.x,pos.y,33,p,rotationData);}
    this.ctx=original;this.stationaryLayer=layer;this.stationaryKey=signature;
   }
   ctx.drawImage(this.stationaryLayer,0,0,720,800);if(moving)FX.under(this,motion,elapsed,d.flipped);
   const draw=p=>{const animated=p.id===moving,at=animated?FX.pose(motion.move,elapsed,q=>this.boardPoint(q,d.flipped),this._movingPose||(this._movingPose={}),motion.timings):this.boardPoint(p,d.flipped);
    let face=p,hidden=p.hidden;if(animated){hidden=motion.move.revealed?at.hidden:p.hidden;
     if(motion.move.fusionType&&elapsed<(motion.timings||FX.timing(motion.move)).contact&&motion.move.sourcePieces)face=motion.move.sourcePieces[0];}
-   ctx.save();ctx.translate(at.x,at.y-(at.lift||0));ctx.scale(at.flipScale||1,1);this.orientedDisc(0,0,33,face,d);ctx.restore();
+   ctx.save();ctx.translate(at.x,at.y-(at.lift||0));ctx.scale(at.flipScale||1,1);this.orientedDisc(0,0,33,face,rotationData);ctx.restore();
   };
   for(const p of d.pieces)if(p.id===moving&&p.id!==d.selectedId)draw(p);
   for(const p of d.pieces)if(p.id===d.selectedId)draw(p);

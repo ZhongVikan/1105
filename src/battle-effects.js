@@ -43,7 +43,8 @@ function sweep(renderer,x,y,progress,alpha){
 function under(renderer,motion,elapsed,flipped){
  const t=motion.timings||timing(motion.move),fade=smooth((elapsed-t.contact)/140),c=renderer.ctx;
  if(fade>=1)return;
- for(const p of motion.removedPieces||motion.capturedPieces||[]){const q=renderer.boardPoint(p,flipped);c.save();c.globalAlpha=1-fade;c.translate(q.x,q.y);const scale=1-.14*fade;c.scale(scale,scale);renderer.disc(0,0,33,p.text,p.side,p.hidden,false,p);c.restore();}
+ const rotationData=renderer.runtime&&renderer.runtime.controller&&renderer.runtime.controller.data;
+ for(const p of motion.removedPieces||motion.capturedPieces||[]){const q=renderer.boardPoint(p,flipped);c.save();c.globalAlpha=1-fade;c.translate(q.x,q.y);const scale=1-.14*fade;c.scale(scale,scale);if(renderer.orientedDisc)renderer.orientedDisc(0,0,33,p,rotationData);else renderer.disc(0,0,33,p.text,p.side,p.hidden,false,p);c.restore();}
 }
 function sparks(renderer,event,x,y,age,quality,subtle=false){
  const a=event.particles;if(!a||age<0)return;const c=renderer.ctx,n=quality===0?Math.min(6,a.length/6):a.length/6;c.save();c.lineCap='round';
