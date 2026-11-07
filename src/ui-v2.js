@@ -66,8 +66,8 @@ function install(Renderer){const p=Renderer.prototype;
  }
  const c=this.ctx;c.save();c.translate(b.x,b.y);c.scale(b.w/720,b.h/800);for(const p of this._captureHints.points){const q=this.boardPoint(p,d.flipped);if(p.capture)this.pieceRing(q.x,q.y,33,'#62b878');else{c.save();c.beginPath();c.arc(q.x,q.y,12,0,Math.PI*2);c.strokeStyle='#ffffff';c.lineWidth=2;c.stroke();c.restore();}}c.restore();
  };
- p.captureTray=function(captured,y,width=335,rotate=false){const r=33*this.boardRect.w/720*.8,step=2*r+3,columns=Math.max(1,Math.floor(width/step));
- const data=this.runtime.controller&&this.runtime.controller.data;captured.forEach((piece,i)=>this.orientedDisc(22+r+(i%columns)*step,y+r+Math.floor(i/columns)*step,r,piece,data,false,rotate));
+ p.captureTray=function(captured,y,width=335,rotate=false){const r=33*this.boardRect.w/720*.8,step=2*r+3,columns=Math.max(1,Math.floor(width/step)),data=this.runtime.controller&&this.runtime.controller.data,side=rotate?'black':'red';
+ this.drawCapturedRegion(captured,data,side,22+r,y+r,r,step,columns,(piece,x,y)=>this.disc(x,y,r,piece.text,piece.side,piece.hidden));
  return Math.max(step,Math.ceil(captured.length/columns)*step);
  };
  p.player=function(side,name,avatar,y,captured,data,now,capturePlacement='below'){const active=data.turn===side&&!data.ended&&!data.waiting,rotateBar=this.beginPlayerPerspective(data,side,y);

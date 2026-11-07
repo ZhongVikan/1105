@@ -26,6 +26,6 @@ test('hotseat rotates black pieces and supports a timer-only pause',()=>{
  assert.equal(r.pieceShouldRotate({mode:'local'},{hidden:true,side:'red',x:4,y:9}),false);
  assert.equal(r.pieceShouldRotate({mode:'local'},{hidden:false,side:'black'}),true);
  assert.equal(r.pieceShouldRotate({mode:'ai'},{hidden:false,side:'black'}),false);
- const rotations=[];r.ctx={save(){},restore(){},translate(){},rotate(angle){rotations.push(angle)}};r.disc=()=>{};r.orientedDisc(0,0,10,{side:'red',hidden:false,text:'兵'},{mode:'local'},false,true);assert.deepEqual(rotations,[Math.PI]);rotations.length=0;r.orientedDisc(0,0,10,{side:'black',hidden:false,text:'卒'},{mode:'local'},false,false);assert.deepEqual(rotations,[]);
+ const rotations=[];r.ctx={save(){},restore(){},translate(){},rotate(angle){rotations.push(angle)}};r.disc=()=>{};r.orientedDisc(0,0,10,{side:'red',hidden:false,text:'兵'},{mode:'local'},false,true);assert.deepEqual(rotations,[Math.PI]);rotations.length=0;r.orientedDisc(0,0,10,{side:'black',hidden:false,text:'卒'},{mode:'local'},false,false);assert.deepEqual(rotations,[]);rotations.length=0;r.drawCapturedRegion([{text:'兵',side:'red'}],{mode:'local'},'black',10,10,5,12,3,()=>{});assert.deepEqual(rotations,[Math.PI]);
  const c=page();c._mode='local';c.data={...c.data,mode:'local',waiting:false};c._room=null;c._clock.start();c.togglePause();assert.equal(c.data.manualPaused,true);assert.ok(c._clock.reasons.has('manual'));c.togglePause();assert.equal(c.data.manualPaused,false);assert.equal(c._clock.reasons.has('manual'),false);
 });

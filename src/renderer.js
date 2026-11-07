@@ -40,6 +40,7 @@ class Renderer {
  pieceSide(piece){return piece&&piece.hidden?rulesCore.controller(piece):piece&&piece.side;}
  pieceShouldRotate(data,piece){return !!(data&&data.mode==='local'&&this.pieceSide(piece)==='black');}
  orientedDisc(x,y,r,piece,data,selected=false,forceRotate=null){const rotate=forceRotate===null?this.pieceShouldRotate(data,piece):!!forceRotate;if(!rotate)return this.disc(x,y,r,piece.text,piece.side,piece.hidden,selected,piece);const c=this.ctx;c.save();c.translate(x,y);c.rotate(Math.PI);this.disc(0,0,r,piece.text,piece.side,piece.hidden,selected,piece);c.restore();}
+ drawCapturedRegion(captured,data,side,x,y,r,step,columns,draw){if(!captured.length)return;const rows=Math.max(1,Math.ceil(captured.length/columns)),cx=x+(Math.max(1,columns)-1)*step/2,cy=y+(rows-1)*step/2,rotate=data&&data.mode==='local'&&side==='black';if(rotate){this.ctx.save();this.ctx.translate(cx,cy);this.ctx.rotate(Math.PI);this.ctx.translate(-cx,-cy);}captured.forEach((piece,i)=>draw(piece,x+(i%columns)*step,y+Math.floor(i/columns)*step));if(rotate)this.ctx.restore();}
  beginPlayerPerspective(data,side,y){const rotate=!!(data&&data.mode==='local'&&side==='black');if(rotate){this.ctx.save();this.ctx.translate(187.5,y+24);this.ctx.rotate(Math.PI);this.ctx.translate(-187.5,-(y+24));}return rotate;}
  endPlayerPerspective(rotate){if(rotate)this.ctx.restore();}
  header(title,back=true){this.text(title,187.5,this.top+6,18,'#3c332a','center',true);if(back)this.button('返回',16,this.top-16,56,36,()=>this.runtime.back());}
@@ -61,7 +62,7 @@ class Renderer {
   if(active){ctx.beginPath();ctx.arc(41,y+24,20,0,Math.PI*2);ctx.strokeStyle='rgba(172,128,60,'+(.45+.25*Math.sin(now/600))+')';ctx.lineWidth=2;ctx.stroke();}
 
   const short=Array.from(name).slice(0,14).join('');this.text(short,68,y+17,12,'#514030');this.text(active?(data.paused?'计时暂停':'当前行棋'):'等待对方',68,y+34,11,'#9c8567');if(active)this.text(data.seconds+'秒',342,y+25,23,data.seconds<=10?'#c33d2b':'#997640','right',true);
-  this.endPlayerPerspective(rotateBar);const r=33*this.boardRect.w/720*.8,step=2*r+3,columns=Math.floor(286/step),rotateCaptured=data.mode==='local'&&side==='black';captured.forEach((p,i)=>{this.orientedDisc(72+r+(i%columns)*step,y+62+Math.floor(i/columns)*step,r,p,data,false,rotateCaptured);});
+  this.endPlayerPerspective(rotateBar);const r=33*this.boardRect.w/720*.8,step=2*r+3,columns=Math.floor(286/step);this.drawCapturedRegion(captured,data,side,72+r,y+62,r,step,columns,(p,x,y)=>this.disc(x,y,r,p.text,p.side,p.hidden));
  }
   game(now){const c=this.runtime.controller;if(!c)return;const d=c.data;this.layoutBoard(d);const b=this.boardRect;this.header(d.inference?'推理中':VARIANTS[c._state&&c._state.variant||this.runtime.variant||'dark']+' · 对局中',false);if(!d.inference&&!d.waiting&&!d.ended)this.button('推理',16,Math.max(4,this.top-68),56,36,()=>c.enterInference());if(!d.inference&&(d.mode==='ai'||d.mode==='local')&&!d.fakeOpponent&&!d.ended)this.button('暂停',16,this.top-16,56,36,()=>c.togglePause());this.player(d.topSide,d.topName,d.topAvatar,this.top+28,d.topCaptured,d,now);
   this.board(d,b,c.motion,now);const bottom=b.y+b.h+12;this.player(d.bottomSide,d.bottomName,d.bottomAvatar,bottom,d.bottomCaptured,d,now);
