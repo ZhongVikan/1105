@@ -4,6 +4,7 @@
   "compileType": "game",
   "cloudfunctionRoot": "cloudfunctions/",
   "setting": {"es6": true, "minified": true},
+  "condition": {"game": {"current": -1, "list": []}},
   "packOptions": {"ignore": [
     {"type": "folder", "value": "cloudfunctions"},
     {"type": "folder", "value": "tests"},
