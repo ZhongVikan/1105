@@ -33,6 +33,12 @@ test('matched session ignores an old waiting response even when its room id is s
  assert.equal(c.data.waiting,false);assert.equal(c._room.roomId,'r');assert.equal(c._room.waiting,false);assert.equal(c.data.topName,'黑方');
 });
 
+test('an opponent profile wins over an inconsistent waiting flag',()=>{
+ const c=controller(),state=G.newGame(undefined,'classic');
+ c.applyRoom({roomId:'r',rev:1,side:'red',red:{nickname:'红方'},black:{nickname:'黑方'},match:true,waiting:true,state,serverNow:2});
+ assert.equal(c.data.waiting,false);assert.equal(c._room.waiting,false);assert.equal(c.data.topName,'黑方');
+});
+
 test('post-match board taps ignore stale waiting hitboxes',()=>{
  let clicked=0,moved;
  const runtime={scene:'game',touch:{x:10,y:10,lastY:10,moved:false,scene:'game'},renderer:{_targetState:{scene:'game',waiting:true},targets:[{x:0,y:0,w:100,h:100,action:()=>{clicked++;}}],boardRect:{x:0,y:0,w:100,h:100},boardHit(){return {x:0,y:0};}},controller:{data:{waiting:false,showResult:false,showStickers:false,flipped:false,inference:false,pieces:[]},onPoint:event=>{moved=event.detail;}},audio:{effect(){}},position(t){return {x:t.clientX,y:t.clientY};}};
