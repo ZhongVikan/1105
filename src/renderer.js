@@ -20,6 +20,8 @@ class Renderer {
    animate=!c.data.manualPaused&&!c._hidden&&((c._battle&&c._battle.active())||warning||(c.data.showResult&&time-c._resultShownAt<340)||c.data.matchFound);
    if(!c._battle&&c.motion){const end=c.motion.at+FX.timing(c.motion.move).total;if(time<end)animate=true;else if(this.lastDraw<end)this.dirty=true;}
   }
+  const authLoading=this.runtime.scene==='profile'&&(this.runtime.loginBusy||this.runtime._privacyBusy);
+  animate=animate||authLoading;
   if((this.dirty||animate)&&time-this.lastDraw>=(animate?(this.fxQuality===0?33:16):(this.runtime.scene==='rules'?16:42))){this.draw(time);this.lastDraw=time;this.dirty=false;}
   if(this.dirty||animate)this.queueFrame();
  }

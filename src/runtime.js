@@ -130,7 +130,7 @@ class Runtime {
  async saveProfile(info){
   if(this.loginBusy)return;if(!config.cloudEnv)return this.toast('真人对战还需配置云开发环境');
   if(!info.avatarUrl||!info.nickName)return this.profileError('获取头像昵称',{message:'微信返回的信息缺少头像或昵称'});
-  this.loginBusy=true;this.invalidate();let stage='下载头像';
+  this.loginBusy=true;if(this.authButton)this.authButton.hide();this.invalidate();let stage='下载头像';
   try{
    // Authentication is supplied by cloud WX context. Never trust a client OPENID.
    const file=await new Promise((resolve,reject)=>wx.downloadFile({url:info.avatarUrl,success:r=>r.statusCode===200?resolve(r.tempFilePath):reject(Error('头像下载失败')),fail:reject}));
