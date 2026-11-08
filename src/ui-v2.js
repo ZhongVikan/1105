@@ -22,14 +22,13 @@ function install(Renderer){const p=Renderer.prototype;
  c.drawImage(layer,x,y,w,h);old.text.call(this,{dark:'暗棋',classic:'经典',jieqi:'揭棋',fusion:'合棋'}[variant],x+w/2,y+h*.46,16,'#421d09','center',true);this.targets.push({x,y,w,h,action});return true;};
  // Sample original artwork directly. No regenerated icons or font substitution.
  p.referenceHomeFunctions=function(y,width){const im=this.uiImage('home_reference');if(!im)return false;const c=this.ctx,k=width/940,x=(375-width)/2;
- if(!this._homeLabelBackground){const layer=wx.createCanvas();layer.width=940;layer.height=551;const q=layer.getContext('2d');q.filter='saturate(.88) brightness(1.03)';q.drawImage(im,0,0);[[357,50,323,112,675],[619,264,163,84,788]].forEach(([bx,by,bw,bh,strip])=>q.drawImage(im,strip,by,1,bh,bx,by,bw,bh));q.filter='none';this._homeLabelBackground=layer;}
+ if(!this._homeLabelBackground){const layer=wx.createCanvas();layer.width=940;layer.height=551;const q=layer.getContext('2d');q.filter='saturate(.88) brightness(1.03)';q.drawImage(im,0,0);[[357,50,323,112,675]].forEach(([bx,by,bw,bh,strip])=>q.drawImage(im,strip,by,1,bh,bx,by,bw,bh));q.filter='none';this._homeLabelBackground=layer;}
  const sprite=(sx,sy,sw,sh,r,action)=>{c.save();this.rounded(x+sx*k,y+sy*k,sw*k,sh*k,r*k);c.clip();c.drawImage(this._homeLabelBackground,sx,sy,sw,sh,x+sx*k,y+sy*k,sw*k,sh*k);c.restore();this.targets.push({x:x+sx*k,y:y+sy*k,w:sw*k,h:sh*k,action});};
  sprite(122,17,694,185,90,()=>this.runtime.open('difficulty'));
  sprite(51,227,414,156,60,()=>this.runtime.startGame({mode:'online'}));
  sprite(479,227,412,156,60,()=>this.runtime.startGame({mode:'online',match:'1'}));
  const label=(text,px,py,size,color,bold)=>old.text.call(this,text,x+px*k,y+py*k,size*k,color,'left',bold);
  label('人机对战',369,88,60,'#421d09',true);label('挑战智能对手，提升棋力',369,145,25,'#421d09',false);
- label('大厅匹配',622,290,38,'#ffffff',true);label('在线匹配对手',622,333,25,'#ffffff',false);
  [[195,'profile'],[408,'rules'],[624,'settings']].forEach(([sx,scene],i)=>{
  const ek=k*1.22,cx=x+(sx+60.5)*k,ey=y+405*k+18,ew=121*ek,eh=104*ek;
  c.save();this.rounded(cx-ew/2,ey,ew,eh,52*ek);c.clip();c.drawImage(im,sx,405,121,104,cx-ew/2,ey,ew,eh);c.restore();
