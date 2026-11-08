@@ -22,14 +22,18 @@ function install(Renderer){const p=Renderer.prototype;
  c.drawImage(layer,x,y,w,h);old.text.call(this,{dark:'暗棋',classic:'经典',jieqi:'揭棋',fusion:'合棋'}[variant],x+w/2,y+h*.46,16,'#421d09','center',true);this.targets.push({x,y,w,h,action});return true;};
  // Sample original artwork directly. No regenerated icons or font substitution.
  p.referenceHomeFunctions=function(y,width){const im=this.uiImage('home_reference');if(!im)return false;const c=this.ctx,k=width/940,x=(375-width)/2;
- if(!this._homeLabelBackground){const layer=wx.createCanvas();layer.width=940;layer.height=551;const q=layer.getContext('2d');q.filter='saturate(.88) brightness(1.03)';q.drawImage(im,0,0);[[357,50,323,112,675],[619,264,163,84,788]].forEach(([bx,by,bw,bh,strip])=>q.drawImage(im,strip,by,1,bh,bx,by,bw,bh));q.filter='none';this._homeLabelBackground=layer;}
- const sprite=(sx,sy,sw,sh,r,action,sourceHeight=sh)=>{c.save();this.rounded(x+sx*k,y+sy*k,sw*k,sh*k,r*k);c.clip();c.drawImage(this._homeLabelBackground,sx,sy,sw,sourceHeight,x+sx*k,y+sy*k,sw*k,sh*k);c.restore();this.targets.push({x:x+sx*k,y:y+sy*k,w:sw*k,h:sh*k,action});};
+ if(!this._homeLabelBackground){const layer=wx.createCanvas();layer.width=940;layer.height=551;const q=layer.getContext('2d');q.filter='saturate(.88) brightness(1.03)';q.drawImage(im,0,0);[[357,50,323,112,675],[619,264,163,84,788]].forEach(([bx,by,bw,bh,strip])=>q.drawImage(im,strip,by,1,bh,bx,by,bw,bh));
+ // The source artwork contains a soft button shadow outside the blue/green
+ // button bounds. Clear that baked shadow from the background first; the
+ // button sprite is drawn over it below, so no ghost band remains underneath.
+ [[51,227,414,175,20],[479,227,412,175,920]].forEach(([bx,by,bw,bh,strip])=>q.drawImage(im,strip,by,1,bh,bx,by,bw,bh));
+ q.filter='none';this._homeLabelBackground=layer;}
+ const sprite=(sx,sy,sw,sh,r,action,sourceHeight=sh,source=this._homeLabelBackground)=>{c.save();this.rounded(x+sx*k,y+sy*k,sw*k,sh*k,r*k);c.clip();c.drawImage(source,sx,sy,sw,sourceHeight,x+sx*k,y+sy*k,sw*k,sh*k);c.restore();this.targets.push({x:x+sx*k,y:y+sy*k,w:sw*k,h:sh*k,action});};
  sprite(122,17,694,185,90,()=>this.runtime.open('difficulty'));
- // The source blue button has a baked drop shadow below y=370. Crop it out
- // before stretching into the same 156px slot so no ghost band appears below
- // the invite button on the home screen.
- sprite(51,227,414,156,60,()=>this.runtime.startGame({mode:'online'}),143);
- sprite(479,227,412,156,60,()=>this.runtime.startGame({mode:'online',match:'1'}));
+ // Draw both button sprites from the same full-height source slot so their
+ // arrow circles keep identical geometry and vertical alignment.
+ sprite(51,227,414,156,60,()=>this.runtime.startGame({mode:'online'}),156,im);
+ sprite(479,227,412,156,60,()=>this.runtime.startGame({mode:'online',match:'1'}),156,im);
  const label=(text,px,py,size,color,bold)=>old.text.call(this,text,x+px*k,y+py*k,size*k,color,'left',bold);
  label('人机对战',369,88,60,'#421d09',true);label('挑战智能对手，提升棋力',369,145,25,'#421d09',false);
  label('大厅匹配',622,290,38,'#ffffff',true);label('在线匹配对手',622,333,25,'#ffffff',false);
