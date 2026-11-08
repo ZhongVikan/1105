@@ -42,7 +42,7 @@ function install(Renderer){const p=Renderer.prototype;
   const g=c.createLinearGradient(px,py-outer*k,px,py+outer*k);g.addColorStop(0,top);g.addColorStop(1,bottom);c.fillStyle=g;c.fillRect(px-outer*k,py-outer*k,outer*2*k,outer*2*k);c.restore();
   c.save();c.beginPath();c.arc(px,py,rad*k,0,Math.PI*2);c.clip();
   c.drawImage(im,cx-rad,cy-rad,rad*2,rad*2,px-rad*k,py-rad*k,rad*2*k,rad*2*k);c.restore();};
- cleanArrow(412,'#4387f4','#2c65f0');cleanArrow(830,'#56b76a','#4aa265');
+ cleanArrow(412,'#4387f4','#2c65f0');
  const label=(text,px,py,size,color,bold)=>old.text.call(this,text,x+px*k,y+py*k,size*k,color,'left',bold);
  label('人机对战',369,88,60,'#421d09',true);label('挑战智能对手，提升棋力',369,145,25,'#421d09',false);
  label('大厅匹配',622,290,38,'#ffffff',true);label('在线匹配对手',622,333,25,'#ffffff',false);
