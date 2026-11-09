@@ -7,6 +7,17 @@ exports.main=async event=>{
  try{
  const variant=event.variant||'dark';if(['create','match'].includes(event.action)&&!['dark','classic','jieqi','fusion'].includes(variant))throw Error('未知玩法');
  const uid=cloud.getWXContext().OPENID;if(!uid)throw Error('请在微信中登录');const key=uidKey(uid),users=db.collection('chess_users'),rooms=db.collection('chess_rooms');
+ // Polls are by far the hottest online path.  A paired room that is still
+ // inside its current deadline has no state to mutate, so avoid opening a
+ // transaction (and the extra user read) just to return the same snapshot.
+ // Mutating polls (timeout/expired request) and waiting-room heartbeats keep
+ // using the transactional path below so their revisions remain authoritative.
+ if(event.action==='poll'&&/^[a-f0-9]{32}$/.test(event.roomId||'')){
+  const room=await optional(rooms.doc(event.roomId)),now=Date.now();
+  if(!room)throw Error('房间不存在');
+  const beforeRev=room.rev;S.expire(room,now);
+  if(room.black&&room.rev===beforeRev)return {ok:true,...S.publicRoom(room,uid,now)};
+ }
  if(event.action==='profile'){
   const nickname=String(event.nickname||'').trim(),avatar=String(event.avatar||'');if(!nickname||nickname.length>24||!avatar.startsWith('cloud://'))throw Error('请填写昵称并选择头像');
   // Identity comes only from WX context, never from a caller-supplied openid.
@@ -42,7 +53,16 @@ exports.main=async event=>{
    if(event.action==='join'){
     if(!/^[a-f0-9]{32}$/.test(event.roomId||''))throw Error('房间链接无效');room=await optional(roomCollection.doc(event.roomId));if(!room||room.black||room.state.status!=='playing')throw Error('房间已满或已结束');
    }else if(event.action==='match'){
-    for(const entry of lobby.entries){const candidate=await optional(roomCollection.doc(entry.id));if(S.canMatch(candidate,uid,variant)){room=candidate;break;}}
+    // Read queued rooms concurrently. A busy lobby can contain dozens of
+    // entries; awaiting each document one by one adds one database round trip
+    // per entry before a compatible opponent is found.
+    const queued=await Promise.all(lobby.entries.map(async entry=>({entry,candidate:await optional(roomCollection.doc(entry.id))})));
+    const stale=new Set();
+    for(const {entry,candidate} of queued){
+     if(!candidate){stale.add(entry.id);continue;}
+     if(!room&&S.canMatch(candidate,uid,variant))room=candidate;
+    }
+    if(stale.size)lobby.entries=lobby.entries.filter(entry=>!stale.has(entry.id));
    }
    if(room){
     // Apply the creator's seat preference when the second player takes the seat.

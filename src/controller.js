@@ -3,6 +3,10 @@ const G=require('../utils/game-engine'),R=require('../utils/rules-core'),S=requi
 const Repetition=require('../utils/repetition'),Fusion=require('../utils/fusion'),FakeOpponents=require('../utils/fake-opponents');
 const names={red:'红方',black:'黑方'};
 const MATCH_HUMAN_WAIT_SECONDS=10,MATCH_FAKE_MAX_SECONDS=20;
+// Poll more often while waiting for the opponent's move and back off while
+// it is our turn. A timer (rather than a fixed interval) prevents a slow
+// cloud-function call from queueing another poll behind it.
+const POLL_WAITING_MS=1000,POLL_OWN_TURN_MS=900,POLL_OPPONENT_TURN_MS=650,POLL_BACKOFF_MAX_MS=6000;
 const roleLabels={red:{rook:'俥',horse:'傌',elephant:'相',advisor:'仕',cannon:'炮',pawn:'兵'},black:{rook:'車',horse:'馬',elephant:'象',advisor:'士',cannon:'砲',pawn:'卒'}};
 const inferenceRoles=['rook','horse','elephant','advisor','cannon','pawn'];
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -20,18 +24,34 @@ module.exports={
  data:{pieces:[],flipped:false,selectedId:'',turn:'red',topSide:'black',bottomSide:'red',topName:'黑方',bottomName:'红方',topCaptured:[],bottomCaptured:[],message:'',ply:0,showResult:false,resultTitle:'',resultDetail:'',unlucky:false,movingId:'',lastMoveId:'',revealId:'',captureId:'',ended:false,seconds:60,paused:false,mode:'ai',level:'normal',waiting:false,matchSeconds:0,matchFound:false,matchFoundAt:0,fakeOpponent:false,pendingRequest:'',pendingUntil:0,topAvatar:'',bottomAvatar:'',stickers,showStickers:false,stickerImage:'',stickerText:'',roomId:'',busy:false,manualPaused:false,inference:false,inferencePieces:[],inferenceSelectedId:'',inferenceLastMoveId:'',inferenceTopCaptured:[],inferenceBottomCaptured:[],inferenceMessage:'',inferenceAssumptionMenu:false,inferenceAssumptionOptions:[],onlineMatch:false,seatPreference:'rotate',seatMenu:false},
  async onLoad(options){this._alive=true;this._token=0;this._audio=this.runtime&&this.runtime.audio||new Audio();this._audio.refresh();this._clock=new Clock();this._history=[];this._repetitionHistory=[];this._countdownCueKey='';this._fakeOpponent=null;this._fakeRestartRejected=false;this._fakeUndoUsed={};this._fakePending=null;this._fakeBotStickerCooldownUntil=0;this._onlineSide=null;this._matchQueue=options.mode==='online'&&options.match==='1';this._matchStartedAt=0;this._matchFallbackAt=0;this._matchResolved=false;this._state=G.newGame(undefined,options.variant||'dark');this._mode=options.mode==='online'?'online':'ai';this._level=['easy','normal','hard'].includes(options.level)?options.level:'normal';this.setData({mode:this._mode,level:this._level,matchSeconds:0,pendingRequest:'',pendingUntil:0});
   this._interval=setInterval(()=>this.tick(),250);
-  if(this._mode==='online'){this.setData({waiting:true,onlineMatch:options.match==='1',fakeOpponent:false,seatPreference:options.seatPreference||'rotate'});try{await Promise.all(['stickersA','stickersB'].map(name=>new Promise((resolve,reject)=>wx.loadSubpackage({name,success:resolve,fail:reject}))));if(!this._alive)return;const action=options.room?'join':options.match==='1'?'match':'create';this.applyRoom(await Online.call(action,{roomId:options.room,variant:options.variant||'dark',seatPreference:this.data.seatPreference}));if(this._alive)this._poll=setInterval(()=>this.poll(),1200);}catch(e){this.toast(e.message);this.home();}}
+  if(this._mode==='online'){this.setData({waiting:true,onlineMatch:options.match==='1',fakeOpponent:false,seatPreference:options.seatPreference||'rotate'});try{await Promise.all(['stickersA','stickersB'].map(name=>new Promise((resolve,reject)=>wx.loadSubpackage({name,success:resolve,fail:reject}))));if(!this._alive)return;const action=options.room?'join':options.match==='1'?'match':'create';this.applyRoom(await Online.call(action,{roomId:options.room,variant:options.variant||'dark',seatPreference:this.data.seatPreference}));if(this._alive)this.startPolling();}catch(e){this.toast(e.message);this.home();}}
   else {this.loadStickers();this._clock.start();this.sync();}
  },
- onShow(){this._hidden=false;if(this._alive&&!this._interval)this._interval=setInterval(()=>this.tick(),250);if(this._alive&&this._room&&!this._poll)this._poll=setInterval(()=>this.poll(),1200);if(this._audio)this._audio.refresh();if(this._clock){this.tick();this.scheduleAI();}if(this._room)this.poll();},
- onHide(){this.clearPresentation();this._warningPhase=null;this._hidden=true;this._token++;clearInterval(this._interval);clearInterval(this._poll);this._interval=null;this._poll=null;if(this._audio)this._audio.hide();/* Clock intentionally continues in background. */},
- onUnload(){this._inference=null;this.clearPresentation();this._warningPhase=null;clearTimeout(this._resultTimer);clearTimeout(this._matchFoundTimer);clearTimeout(this._moveAudioTimer);clearTimeout(this._fakeStickerTimer);clearTimeout(this._fakeRequestTimer);if(this._aiDelayResolve){clearTimeout(this._aiDelayTimer);this._aiDelayResolve();this._aiDelayResolve=null;}this._fakePending=null;this._alive=false;this._token++;clearInterval(this._interval);clearInterval(this._poll);clearTimeout(this._checkTimer);clearTimeout(this._stickerTimer);if(this._mode==='online'&&this._room&&this._state&&this._state.status==='ended')Online.call('leave',{roomId:this._room.roomId,rev:this._room.rev}).catch(()=>{});if(this._audio){if(this.runtime&&this.runtime.audio===this._audio)this._audio.hide();else this._audio.destroy();}},
+ onShow(){this._hidden=false;if(this._alive&&!this._interval)this._interval=setInterval(()=>this.tick(),250);if(this._alive&&this._room&&!this._poll)this.startPolling();if(this._audio)this._audio.refresh();if(this._clock){this.tick();this.scheduleAI();}if(this._room)this.poll();},
+ onHide(){this.clearPresentation();this._warningPhase=null;this._hidden=true;this._token++;clearInterval(this._interval);this.stopPolling();this._interval=null;if(this._audio)this._audio.hide();/* Clock intentionally continues in background. */},
+ onUnload(){this._inference=null;this.clearPresentation();this._warningPhase=null;clearTimeout(this._resultTimer);clearTimeout(this._matchFoundTimer);clearTimeout(this._moveAudioTimer);clearTimeout(this._fakeStickerTimer);clearTimeout(this._fakeRequestTimer);if(this._aiDelayResolve){clearTimeout(this._aiDelayTimer);this._aiDelayResolve();this._aiDelayResolve=null;}this._fakePending=null;this._alive=false;this._token++;clearInterval(this._interval);this.stopPolling();clearTimeout(this._checkTimer);clearTimeout(this._stickerTimer);if(this._mode==='online'&&this._room&&this._state&&this._state.status==='ended')Online.call('leave',{roomId:this._room.roomId,rev:this._room.rev}).catch(()=>{});if(this._audio){if(this.runtime&&this.runtime.audio===this._audio)this._audio.hide();else this._audio.destroy();}},
+ stopPolling(){if(this._poll){clearTimeout(this._poll);clearInterval(this._poll);this._poll=null;}},
+ pollDelay(){
+  if(!this._room||this._room.waiting)return POLL_WAITING_MS;
+  const base=this._state&&this._room.side&&this._state.turn!==this._room.side?POLL_OPPONENT_TURN_MS:POLL_OWN_TURN_MS;
+  const failures=Math.min(3,Math.max(0,this._networkFailures||0));
+  return Math.min(POLL_BACKOFF_MAX_MS,base*Math.pow(2,failures));
+ },
+ startPolling(delay){
+  if(!this._alive||this._hidden||!this._room)return;
+  this.stopPolling();
+  this._poll=setTimeout(async()=>{
+   this._poll=null;
+   await this.poll();
+   if(this._alive&&!this._hidden&&this._room)this.startPolling(this.pollDelay());
+  },Math.max(0,Number.isFinite(delay)?delay:this.pollDelay()));
+ },
  toast(title){wx.showToast({title,icon:'none'});},
  tick(){if(!this._alive||!this._state||this._state.status!=='playing')return;
   if(this._mode==='online'){if(this._room&&this._room.waiting){if(this._matchQueue&&this._matchStartedAt){const elapsed=Math.max(0,Math.floor((Date.now()-this._matchStartedAt)/1000));this.setData({matchSeconds:elapsed});if(elapsed>=this._matchFallbackAt)this.activateFakeOpponent();}return;}if(!this._room)return;const now=Date.now()+this._offset,r=this._room;const pause=Math.max(0,r.holdUntil-now);const seconds=Math.max(0,Math.min(60,Math.ceil((r.deadline-now-pause)/1000)));this.setData({seconds,paused:pause>0});this.countdownCue(seconds);return;}
   const seconds=this._clock.seconds(),paused=this._clock.reasons.size>0;if(seconds!==this.data.seconds||paused!==this.data.paused)this.setData({seconds,paused});this.countdownCue(seconds);if(this._clock.expired()){this._token++;this._state={...this._state,status:'ended',reason:'timeout',motif:'超时判负',winner:R.opposite(this._state.turn)};this.sync('timeout');}
  },
- countdownCue(seconds){if(seconds>10||!this._audio||!this._state||this._state.status!=='playing')return;const key=this._state.ply+':'+this._state.turn;if(this._countdownCueKey===key)return;this._countdownCueKey=key;this._audio.speak('47_十秒倒计时_渐进版.wav',{countdown:true});},
+ countdownCue(seconds){if(seconds>10||!this._audio||typeof this._audio.speak!=='function'||!this._state||this._state.status!=='playing')return;const key=this._state.ply+':'+this._state.turn;if(this._countdownCueKey===key)return;this._countdownCueKey=key;this._audio.speak('47_十秒倒计时_渐进版.wav',{countdown:true});},
  stopCountdownCue(){this._countdownCueKey='';if(this._audio&&this._audio.cancelCountdown)this._audio.cancelCountdown();},
  async activateFakeOpponent(){
   if(!this._alive||this._mode!=='online'||!this._matchQueue||!this._room||!this._room.waiting||this._fakeOpponent||this._botActivating)return;
@@ -39,7 +59,7 @@ module.exports={
   try{
    try{const latest=await Online.call('poll',{roomId,rev:pending.rev});if(!this._alive||!this._room||this._room.roomId!==roomId)return;if(!latest.waiting){this.applyRoom(latest);return;}}catch(e){}
    if(!this._alive||this._mode!=='online'||!this._room||this._room.roomId!==roomId||!this._room.waiting)return;
-   const bot=FakeOpponents.pick();this.clearPresentation();this._state=privateStateForOffline(this._state);this._history=[];this._repetitionHistory=[];this._fakeOpponent=bot;this._fakeRestartRejected=false;this._fakeUndoUsed={};this._token++;clearInterval(this._poll);this._poll=null;this._room=null;this._mode='ai';this._level='hard';this._clock.start();Online.call('cancel').catch(()=>{});
+   const bot=FakeOpponents.pick();this.clearPresentation();this._state=privateStateForOffline(this._state);this._history=[];this._repetitionHistory=[];this._fakeOpponent=bot;this._fakeRestartRejected=false;this._fakeUndoUsed={};this._token++;this.stopPolling();this._room=null;this._mode='ai';this._level='hard';this._clock.start();Online.call('cancel').catch(()=>{});
    this.setData({mode:'ai',level:'hard',waiting:false,matchSeconds:0,roomId:'',fakeOpponent:true,manualPaused:false,paused:false,message:bot.nickname+' 已入座'});this.sync();this.scheduleAI();
   }finally{this._botActivating=false;}
  },
@@ -188,8 +208,8 @@ module.exports={
 
  async command(action,data={}){if(this.data.busy||!this._room)return;if(action==='move')this.stopCountdownCue();this.setData({busy:true});try{this.applyRoom(await Online.call(action,{...data,roomId:this._room.roomId,rev:this._room.rev}));this._networkFailures=0;}catch(e){if(action==='move')this.setData({selectedId:''});if(action==='request')this.setData({pendingRequest:'',pendingUntil:0});this.handleNetworkError(e);this.toast(e&&e.message||'落子失败，请重新同步');if(this._room)await this.poll(true);}finally{if(this._alive)this.setData({busy:false,manualPaused:false});}},
  handleNetworkError(error){this._networkFailures=(this._networkFailures||0)+1;this._lastNetworkError=String(error&&error.message||error||'');if(this._networkFailures>=3&&!this._networkWarned){this._networkWarned=true;this.toast('网络不稳定，正在重连；服务器仍在计时');}},
- async poll(force=false){if(!this._room||this._polling||!this._alive||this._hidden||(!force&&this.data.busy))return;this._polling=true;try{let room;try{room=await Online.call('poll',{roomId:this._room.roomId});}catch(e){this.handleNetworkError(e);return;}try{this.applyRoom(room);}catch(e){console.error('room synchronization failed:',String(e&&e.message||e).slice(0,240));if(!this._syncWarned){this._syncWarned=true;this.toast('对局数据同步失败，请稍后重试');}return;}this._syncWarned=false;this._networkFailures=0;this._networkWarned=false;}finally{this._polling=false;}},
- applyRoom(room){if(!this._alive||this._mode&&this._mode!=='online'||!room||!room.state)return;room={...room,waiting:!!room.waiting&&!room.black};if(this._room&&room.roomId===this._room.roomId&&room.rev<this._room.rev)return;if(this._matchResolved&&room.waiting)return;const old=this._room;if(old&&room.roomId!==old.roomId){this._matchResolved=false;this._onlineSide=null;}const activeSide=room.side||this._onlineSide||(old&&old.side);if(activeSide)this._onlineSide=activeSide;const stateChanged=!!(old&&old.state&&JSON.stringify(old.state)!==JSON.stringify(room.state));this._offset=(room.serverNow||Date.now())-Date.now();this._room=room;this._state=room.state;if(stateChanged)this.stopCountdownCue();if(this.runtime)this.runtime.variant=room.state.variant||'dark';if(this._matchQueue&&room.waiting&&(!old||!old.waiting)){this._matchStartedAt=Date.now();this._matchFallbackAt=MATCH_HUMAN_WAIT_SECONDS+Math.floor(Math.random()*(MATCH_FAKE_MAX_SECONDS-MATCH_HUMAN_WAIT_SECONDS+1));this.setData({matchSeconds:0});}const identityChanged=!old||JSON.stringify([old.red,old.black])!==JSON.stringify([room.red,room.black]);const sideChanged=!old||old.side!==activeSide;const matchQueue=this._matchQueue||this.data.onlineMatch||room.match===true;const matched=!!(matchQueue&&!room.waiting&&(!old||old.waiting));if(matchQueue&&!room.waiting)this._matchResolved=true;const serverPreference=['red','black','rotate'].includes(room.seatPreference)?room.seatPreference:this.data.seatPreference;const eventChanged=!!room.event&&(!old||old.event!==room.event);clearTimeout(this._matchFoundTimer);const nextFlipped=sideChanged?activeSide==='black':this.data.flipped,topSide=nextFlipped?'red':'black',bottomSide=R.opposite(topSide),topProfile=room[topSide],bottomProfile=room[bottomSide];
+ async poll(force=false){if(!this._room||this._polling||!this._alive||this._hidden||(!force&&this.data.busy))return;this._polling=true;try{let room;try{room=await Online.call('poll',{roomId:this._room.roomId,rev:this._room.rev});}catch(e){this.handleNetworkError(e);return;}try{this.applyRoom(room);}catch(e){console.error('room synchronization failed:',String(e&&e.message||e).slice(0,240));if(!this._syncWarned){this._syncWarned=true;this.toast('对局数据同步失败，请稍后重试');}return;}this._syncWarned=false;this._networkFailures=0;this._networkWarned=false;}finally{this._polling=false;}},
+ applyRoom(room){if(!this._alive||this._mode&&this._mode!=='online'||!room||!room.state)return;room={...room,waiting:!!room.waiting&&!room.black};if(this._room&&room.roomId===this._room.roomId&&room.rev<this._room.rev)return;if(this._matchResolved&&room.waiting)return;const old=this._room;if(old&&room.roomId!==old.roomId){this._matchResolved=false;this._onlineSide=null;}const activeSide=room.side||this._onlineSide||(old&&old.side);if(activeSide)this._onlineSide=activeSide;const stateChanged=!!(!old||!old.state||old.rev!==room.rev&&JSON.stringify(old.state)!==JSON.stringify(room.state));const sampleOffset=(room.serverNow||Date.now())-Date.now();this._offset=Number.isFinite(this._offset)?Math.round(this._offset*.75+sampleOffset*.25):sampleOffset;this._room=room;this._state=room.state;if(stateChanged)this.stopCountdownCue();if(this.runtime)this.runtime.variant=room.state.variant||'dark';if(this._matchQueue&&room.waiting&&(!old||!old.waiting)){this._matchStartedAt=Date.now();this._matchFallbackAt=MATCH_HUMAN_WAIT_SECONDS+Math.floor(Math.random()*(MATCH_FAKE_MAX_SECONDS-MATCH_HUMAN_WAIT_SECONDS+1));this.setData({matchSeconds:0});}const identityChanged=!old||JSON.stringify([old.red,old.black])!==JSON.stringify([room.red,room.black]);const sideChanged=!old||old.side!==activeSide;const matchQueue=this._matchQueue||this.data.onlineMatch||room.match===true;const matched=!!(matchQueue&&!room.waiting&&(!old||old.waiting));if(matchQueue&&!room.waiting)this._matchResolved=true;const serverPreference=['red','black','rotate'].includes(room.seatPreference)?room.seatPreference:this.data.seatPreference;const eventChanged=!!room.event&&(!old||old.event!==room.event);clearTimeout(this._matchFoundTimer);const nextFlipped=sideChanged?activeSide==='black':this.data.flipped,topSide=nextFlipped?'red':'black',bottomSide=R.opposite(topSide),topProfile=room[topSide],bottomProfile=room[bottomSide];
   this.setData({waiting:!!room.waiting,onlineMatch:matchQueue,matchFound:matched,matchFoundAt:matched?Date.now():this.data.matchFoundAt,roomId:room.roomId,seatPreference:serverPreference,seatMenu:room.waiting&&this.data.seatMenu,flipped:nextFlipped,topName:topProfile&&topProfile.nickname||this.data.topName,bottomName:bottomProfile&&bottomProfile.nickname||this.data.bottomName,topAvatar:topProfile&&topProfile.avatar||'',bottomAvatar:bottomProfile&&bottomProfile.avatar||'',busy:false,manualPaused:false,paused:false,selectedId:matched?'':this.data.selectedId});if(matched)this._matchFoundTimer=setTimeout(()=>{if(this._alive)this.setData({matchFound:false});},900);const changed=!old||stateChanged||old.waiting!==room.waiting; if(changed||identityChanged){const syncEvent=room.event&&/^undo-/.test(room.event)?'':(old?room.event:undefined);this.sync(syncEvent);}
   if(eventChanged&&room.event==='undo-accepted')this.toast('对方同意了悔棋');
   if(eventChanged&&room.event==='undo-rejected')this.toast('对方拒绝了悔棋');
@@ -204,7 +224,7 @@ module.exports={
   if(this._hotseatStarting)return;
   this._hotseatStarting=true;
   const room=this._room;
-  clearInterval(this._poll);this._poll=null;clearTimeout(this._matchFoundTimer);
+  this.stopPolling();clearTimeout(this._matchFoundTimer);
   this.clearPresentation();this._state=privateStateForOffline(this._state);this._history=[];this._repetitionHistory=[];this._token++;this._matchQueue=false;this._matchResolved=false;this._onlineSide=null;this._room=null;this._mode='local';this._fakeOpponent=null;this._clock.start();
   this.setData({mode:'local',waiting:false,onlineMatch:false,fakeOpponent:false,roomId:'',matchSeconds:0,matchFound:false,seatMenu:false,pendingRequest:'',pendingUntil:0,busy:false,manualPaused:false,paused:false,selectedId:'',showResult:false});
   this.sync();this._hotseatStarting=false;
@@ -214,7 +234,7 @@ module.exports={
  async cancelWait(){
   if(this._canceling)return;
   this._canceling=true;
-  clearInterval(this._poll);this._poll=null;
+  this.stopPolling();
   const room=this._room;
   try{
    if(room)await Online.call('cancel',{roomId:room.roomId,rev:room.rev});
@@ -222,7 +242,7 @@ module.exports={
    this.home();
   }catch(e){
    this._canceling=false;
-   if(this._alive)this._poll=setInterval(()=>this.poll(),1200);
+   if(this._alive)this.startPolling();
    this.toast(e.message||'取消等待失败，请重试');
   }
  },toggleSeatMenu(){if(!this.data.waiting)return;this.setData({seatMenu:!this.data.seatMenu});},async setSeatPreference(preference){if(!['red','black','rotate'].includes(preference)||!this.data.waiting||this.data.onlineMatch)return;this.setData({seatPreference:preference,seatMenu:false});if(this._room){try{this.applyRoom(await Online.call('preference',{roomId:this._room.roomId,rev:this._room.rev,preference}));}catch(e){this.setData({seatPreference:preference,seatMenu:false});/* Keep the local choice visible while an older cloud function catches up. */}}},
