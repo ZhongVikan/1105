@@ -41,7 +41,7 @@ class Renderer {
   if(selected){c.beginPath();c.arc(0,0,r+3,0,Math.PI*2);c.strokeStyle='#af8640';c.lineWidth=1.3;c.stroke();}c.restore();}
  pieceSide(piece){return piece&&piece.hidden?rulesCore.controller(piece):piece&&piece.side;}
  pieceShouldRotate(data,piece){return !!(data&&data.mode==='local'&&this.pieceSide(piece)==='black');}
- orientedDisc(x,y,r,piece,data,selected=false,forceRotate=null){const rotate=forceRotate===null?this.pieceShouldRotate(data,piece):!!forceRotate;if(!rotate)return this.disc(x,y,r,piece.text,piece.side,piece.hidden,selected,piece);const c=this.ctx;c.save();c.translate(x,y);c.rotate(Math.PI);this.disc(0,0,r,piece.text,piece.side,piece.hidden,selected,piece);c.restore();}
+ orientedDisc(x,y,r,piece,data,selected=false,forceRotate=null,forceHidden=null){const rotate=forceRotate===null?this.pieceShouldRotate(data,piece):!!forceRotate,hidden=forceHidden===null?!!piece.hidden:!!forceHidden;if(!rotate)return this.disc(x,y,r,piece.text,piece.side,hidden,selected,piece);const c=this.ctx;c.save();c.translate(x,y);c.rotate(Math.PI);this.disc(0,0,r,piece.text,piece.side,hidden,selected,piece);c.restore();}
  drawCapturedRegion(captured,data,side,x,y,r,step,columns,draw){if(!captured.length)return;const rows=Math.max(1,Math.ceil(captured.length/columns)),cx=x+(Math.max(1,columns)-1)*step/2,cy=y+(rows-1)*step/2,rotate=data&&data.mode==='local'&&side==='black';if(rotate){this.ctx.save();this.ctx.translate(cx,cy);this.ctx.rotate(Math.PI);this.ctx.translate(-cx,-cy);}captured.forEach((piece,i)=>draw(piece,x+(i%columns)*step,y+Math.floor(i/columns)*step));if(rotate)this.ctx.restore();}
  beginPlayerPerspective(data,side,y){const rotate=!!(data&&data.mode==='local'&&side==='black');if(rotate){this.ctx.save();this.ctx.translate(187.5,y+24);this.ctx.rotate(Math.PI);this.ctx.translate(-187.5,-(y+24));}return rotate;}
  endPlayerPerspective(rotate){if(rotate)this.ctx.restore();}
@@ -91,7 +91,7 @@ class Renderer {
   const draw=p=>{const animated=p.id===moving,at=animated?FX.pose(motion.move,elapsed,q=>this.boardPoint(q,d.flipped),this._movingPose||(this._movingPose={}),motion.timings):this.boardPoint(p,d.flipped);
    let face=p,hidden=p.hidden;if(animated){hidden=motion.move.revealed?at.hidden:p.hidden;
     if(motion.move.fusionType&&elapsed<(motion.timings||FX.timing(motion.move)).contact&&motion.move.sourcePieces)face=motion.move.sourcePieces[0];}
-   ctx.save();ctx.translate(at.x,at.y-(at.lift||0));ctx.scale(at.flipScale||1,1);this.orientedDisc(0,0,33,face,rotationData);ctx.restore();
+   ctx.save();ctx.translate(at.x,at.y-(at.lift||0));ctx.scale(at.flipScale||1,1);this.orientedDisc(0,0,33,face,rotationData,false,null,hidden);ctx.restore();
   };
   for(const p of d.pieces)if(p.id===moving&&p.id!==d.selectedId)draw(p);
   for(const p of d.pieces)if(p.id===d.selectedId)draw(p);

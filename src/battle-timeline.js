@@ -2,12 +2,12 @@
 const FX=require('./battle-effects');
 class BattleTimeline{
  constructor(){this.events=[];this.cues=[];this.selection=null;this.pausedAt=null;this.revision=0;this.serial=0;}
- enqueue(move,view,event,state,now=Date.now()){
+ enqueue(move,view,event,state,now=Date.now(),options={}){
   this.advance(now);const tail=this.events[this.events.length-1],at=Math.max(now,tail?tail.at+tail.timings.total:now);
   const e={id:++this.serial,at,move,timings:FX.timing(move),...view,particles:FX.particles(move.id+':'+this.serial,12)};
   this.events.push(e);this.revision++;
-  if(move.capturedId||(move.capturedIds&&move.capturedIds.length))this.cues.push({type:'eat',at:at+e.timings.contact,duration:FX.EAT_DURATION});
-  if(event==='check'||state.status==='ended')this.cues.push({at:at+e.timings.impact,duration:650,warning:event==='check',reason:state.reason,king:event==='check'?state.pieces.find(p=>p.kind==='general'&&p.side===state.turn):null});
+  if(!options.silent&&(move.capturedId||(move.capturedIds&&move.capturedIds.length)))this.cues.push({type:'eat',at:at+e.timings.contact,duration:FX.EAT_DURATION});
+  if(!options.silent&&(event==='check'||state.status==='ended'))this.cues.push({at:at+e.timings.impact,duration:650,warning:event==='check',reason:state.reason,king:event==='check'?state.pieces.find(p=>p.kind==='general'&&p.side===state.turn):null});
   return e;
  }
  advance(now=Date.now()){
