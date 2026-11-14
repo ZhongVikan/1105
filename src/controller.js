@@ -10,6 +10,9 @@ const POLL_WAITING_MS=1000,POLL_OWN_TURN_MS=900,POLL_OPPONENT_TURN_MS=650,POLL_B
 const roleLabels={red:{rook:'俥',horse:'傌',elephant:'相',advisor:'仕',cannon:'炮',pawn:'兵'},black:{rook:'車',horse:'馬',elephant:'象',advisor:'士',cannon:'砲',pawn:'卒'}};
 const inferenceRoles=['rook','horse','elephant','advisor','cannon','pawn'];
 const clone=value=>JSON.parse(JSON.stringify(value));
+// Match a move by observable geometry, independent of JSON property order.
+function moveIdentity(move){return move?[move.id,move.actor,move.from&&move.from.x,move.from&&move.from.y,move.to&&move.to.x,move.to&&move.to.y,!!move.revealed,move.capturedId||null,(move.capturedIds||[]).slice().sort(),move.fusionType||null,!!move.chase,moveIdentity(move.firstHop)]:null;}
+function presentationKey(state){return JSON.stringify([state.variant||'dark',state.ply,moveIdentity(state.lastMove),(state.captured||[]).length]);}
 // Start the visual part of an online move before the cloud round trip settles.
 // Fully visible variants use the authoritative local rules; hidden variants use
 // a presentation-only transition and keep concealed pieces concealed. The
@@ -26,6 +29,7 @@ function predictOnlineMove(state,id,to){
   return result&&result.ok?result:null;
  }
  const actor=state.turn,p=state.pieces.find(q=>q.id===id);if(!p||!Number.isInteger(to.x)||!Number.isInteger(to.y))return null;
+ if(!G.legalAttempt(state.pieces,id,to,actor))return null;
  const target=state.pieces.find(q=>q.id!==id&&q.x===to.x&&q.y===to.y),captured=target?[{...target,capturedBy:actor,atPly:state.ply+1}]:[];
  const moving={...p,x:to.x,y:to.y};
  const pieces=state.pieces.filter(q=>!target||q.id!==target.id).map(q=>q.id===id?moving:q);
@@ -85,7 +89,7 @@ module.exports={
    this.setData({mode:'ai',level:'hard',waiting:false,matchSeconds:0,roomId:'',fakeOpponent:true,manualPaused:false,paused:false,message:bot.nickname+' 已入座'});this.sync();this.scheduleAI();
   }finally{this._botActivating=false;}
  },
- sync(event){if(this._inference&&publicKey(this._state)!==this._inference.formalKey)this.leaveInference('正式棋局已更新，已退出推理');if(this._state.status==='ended'&&['timeout','resign','draw','mutual-check','perpetual-check'].includes(this._state.reason))event=this._state.reason==='timeout'?'timeout':'end';const moved=['fusion','chase','move','capture','reveal','check','checkmate','stalemate','unlucky'].includes(event);const s=this._state;if(s.status==='ended'&&!moved)this.motion=null;if(this._repetitionHistory&&this._repetitionHistory.some(v=>v.ply>=s.ply)){this._repetitionHistory=this._repetitionHistory.filter(v=>v.ply<s.ply);this._longCheckWarning=null;}const top=this.data.flipped?'red':'black',bottom=R.opposite(top),ended=s.status==='ended',last=s.lastMove;const rp=this._room;
+ sync(event){if(this._optimisticMove&&!event&&this._commandPending){this.setData(this.optimisticPatch(this._optimisticMove.state));return;}if(this._inference&&publicKey(this._state)!==this._inference.formalKey)this.leaveInference('正式棋局已更新，已退出推理');if(this._state.status==='ended'&&['timeout','resign','draw','mutual-check','perpetual-check'].includes(this._state.reason))event=this._state.reason==='timeout'?'timeout':'end';const moved=['fusion','chase','move','capture','reveal','check','checkmate','stalemate','unlucky'].includes(event);const s=this._state;if(s.status==='ended'&&!moved)this.motion=null;if(this._repetitionHistory&&this._repetitionHistory.some(v=>v.ply>=s.ply)){this._repetitionHistory=this._repetitionHistory.filter(v=>v.ply<s.ply);this._longCheckWarning=null;}const top=this.data.flipped?'red':'black',bottom=R.opposite(top),ended=s.status==='ended',last=s.lastMove;const rp=this._room;
   const profile=this.runtime&&this.runtime.profile,player=side=>rp&&rp[side]?rp[side].nickname:this._fakeOpponent&&side==='black'?this._fakeOpponent.nickname:this._mode==='ai'&&side==='red'&&profile&&profile.nickname?profile.nickname:this._mode==='ai'&&side==='black'?({easy:'简易 · 菜就多练局',normal:'普通 · 不服就干场',hard:'困难 · 棋王修罗场'}[this._level]):names[side]+' · 你',avatar=side=>rp&&rp[side]?rp[side].avatar||'':this._fakeOpponent&&side==='black'?this._fakeOpponent.avatar||'':this._mode==='ai'&&side==='red'&&profile?profile.avatar||'':'';
   const pendingMessage={restart:'等待对方同意再来一局',undo:'等待对方同意悔棋',draw:'等待对方同意和棋'}[this.data.pendingRequest]||'';
   const patch={pieces:G.displayPieces(s.pieces),turn:s.turn,topSide:top,bottomSide:bottom,topName:player(top),bottomName:player(bottom),topAvatar:avatar(top),bottomAvatar:avatar(bottom),topCaptured:s.captured.filter(p=>p.capturedBy===top),bottomCaptured:s.captured.filter(p=>p.capturedBy===bottom),message:pendingMessage|| (ended?'对局结束':rp&&rp.waiting?(this.data.onlineMatch?'正在匹配棋友':'等待棋友入座'):G.checked(s.pieces,s.turn)?names[s.turn]+'被将军，必须应将':names[s.turn]+'行棋'),ply:s.ply,selectedId:s.pendingChase||'',pendingChase:s.pendingChase||null,fusionUsed:s.fusionUsed||null,ended,showResult:ended?this.data.showResult:false,resultTitle:ended?s.motif:'',resultDetail:ended?(s.winner?names[s.winner]+'获胜':'双方和棋'):'',unlucky:ended&&s.reason==='unlucky',movingId:moved&&last?last.id:'',lastMoveId:last?last.id:'',revealId:moved&&last&&last.revealed?last.id:'',captureId:moved&&last&&last.capturedId?last.id:''};if(this._mode!=='online'&&this._clock){patch.seconds=this._clock.seconds();patch.paused=this._clock.reasons.size>0;}this.presentTransition(event,s,patch);this.setData(patch);this.updateResult(ended,s);
@@ -95,29 +99,34 @@ module.exports={
  resumePresentation(){const now=Date.now(),delta=this._visualPauseAt===undefined?0:now-this._visualPauseAt;if(this._battle)this._battle.resume(now);for(const sound of this._battleSounds||[]){sound.at+=delta;this.armBattleSound(sound);}this._visualPauseAt=undefined;},
  armBattleSound(sound){sound.timer=setTimeout(()=>{const list=this._battleSounds||[],i=list.indexOf(sound);if(i<0)return;list.splice(i,1);if(this._alive&&!this._hidden&&!this.data.manualPaused)this._audio.event(sound.event,sound.state);},Math.max(0,sound.at-Date.now()));},
  optimisticPatch(state){
-  const top=this.data.topSide||'black',bottom=R.opposite(top),last=state.lastMove,ended=state.status==='ended';
+  const top=this.data.flipped?'red':'black',bottom=R.opposite(top),last=state.lastMove,ended=state.status==='ended';
   return {pieces:G.displayPieces(state.pieces),turn:state.turn,topSide:top,bottomSide:bottom,topCaptured:(state.captured||[]).filter(p=>p.capturedBy===top),bottomCaptured:(state.captured||[]).filter(p=>p.capturedBy===bottom),message:this.data.message,ply:state.ply,selectedId:state.pendingChase||'',pendingChase:state.pendingChase||null,fusionUsed:state.fusionUsed||null,ended,showResult:false,resultTitle:ended?state.motif:'',resultDetail:ended?(state.winner?names[state.winner]+'获胜':'双方和棋'):'',unlucky:ended&&state.reason==='unlucky',movingId:last?last.id:'',lastMoveId:last?last.id:'',revealId:last&&last.revealed?last.id:'',captureId:last&&last.capturedId?last.id:''};
  },
  beginOptimisticMove(data){
   if(this._mode!=='online'||!this._room||this._optimisticMove)return null;
   let result;try{result=predictOnlineMove(this._state,data&&data.id,data&&data.to);}catch(e){return null;}if(!result||!result.ok||!result.state||!result.state.lastMove)return null;
-  const state=result.state,last=state.lastMove,key=JSON.stringify([state.variant,state.ply,last,state.captured&&state.captured.length||0]);
-  const pending={key,event:result.event,state};this._optimisticMove=pending;
-  this.presentTransition(result.event,state,this.optimisticPatch(state),{silent:true});this.setData(this.optimisticPatch(state));return pending;
+  const state=result.state,last=state.lastMove,key=presentationKey(state),patch=this.optimisticPatch(state);
+  const pending={key,event:result.event,state,roomId:this._room.roomId,baseRev:this._room.rev};this._optimisticMove=pending;
+  this.presentTransition(result.event,state,patch,{silent:true,awaitReveal:!!last.revealed});
+  pending.motion=this._battle&&this._battle.events[this._battle.events.length-1];this.setData(patch);return pending;
  },
  rollbackOptimisticMove(){
   if(!this._optimisticMove)return;
   this._optimisticMove=null;this.clearPresentation();this._presentedState=null;this._presentedMoveKey='';this._presentedEvent='';this.sync();
  },
- reconcileOptimisticTransition(event,state,now){
-  if(!this._battle)this._battle=new BattleTimeline();const motion=this._battle.events[0]||this.motion,at=motion?motion.at+motion.timings.impact:now;
-  if(state.lastMove&&(state.lastMove.capturedId||(state.lastMove.capturedIds&&state.lastMove.capturedIds.length))){const contact=motion?motion.at+motion.timings.contact:now;this._battle.cues.push({type:'eat',at:contact,duration:FX.EAT_DURATION});this._battle.revision++;}
+ reconcileOptimisticTransition(event,state,patch,now){
+  const pending=this._optimisticMove;if(!pending||pending.settled)return;
+  pending.settled=true;
+  if(!this._battle)this._battle=new BattleTimeline();const motion=pending.motion;
+  this._battle.confirm(motion,state.lastMove,{pieces:patch.pieces,afterBySide:{[patch.topSide]:patch.topCaptured,[patch.bottomSide]:patch.bottomCaptured}},now);
+  this.motion=this._battle.advance(now);const at=motion?Math.max(now,motion.at+motion.timings.impact):now;
+  if(state.lastMove&&(state.lastMove.capturedId||(state.lastMove.capturedIds&&state.lastMove.capturedIds.length))){const contact=motion?Math.max(now,motion.at+motion.timings.contact):now;this._battle.cues.push({type:'eat',at:contact,duration:FX.EAT_DURATION});this._battle.revision++;}
   if(event==='check'||state.status==='ended'){const king=event==='check'?state.pieces.find(p=>p.kind==='general'&&p.side===state.turn):null;this._battle.cues.push({at,duration:650,warning:event==='check',reason:state.reason,king});this._battle.revision++;}
   const sound={event,state,at};(this._battleSounds||(this._battleSounds=[])).push(sound);this.armBattleSound(sound);
  },
  presentTransition(event,state,patch,options={}){
   const now=Date.now(),last=state.lastMove,moved=['fusion','chase','move','capture','reveal','check','checkmate','stalemate','unlucky'].includes(event);
-  const key=last?JSON.stringify([state.variant,state.ply,last,state.captured.length]):'';
+  const key=last?presentationKey(state):'';
   const terminalKey=state.status==='ended'?JSON.stringify([state.ply,state.reason,state.winner,last]):null;
   if(terminalKey&&terminalKey===this._presentedTerminalKey&&!moved){this._presentedState=state;return;}
   this._presentedTerminalKey=terminalKey;
@@ -125,7 +134,7 @@ module.exports={
   if(this._hidden){this.clearPresentation();this._presentedState=state;this._presentedMoveKey=key;return;}
   const optimistic=this._optimisticMove,sameOptimistic=!!(optimistic&&last&&optimistic.key===key);
   if(moved&&last&&sameOptimistic&&key===this._presentedMoveKey){
-   if(event!==this._presentedEvent||!optimistic.silentSettled){this.reconcileOptimisticTransition(event,state,now);if(optimistic)optimistic.silentSettled=true;}
+   if(!options.silent)this.reconcileOptimisticTransition(event,state,patch,now);
   }else if(moved&&last&&key!==this._presentedMoveKey){
    const pieces=patch.pieces;let before=this.data.pieces||[],beforeBySide={[this.data.topSide||'black']:this.data.topCaptured||[],[this.data.bottomSide||'red']:this.data.bottomCaptured||[]};
    // A poll can contain both chase hops. Replay only the authoritative firstHop we have not seen.
@@ -252,15 +261,78 @@ module.exports={
  async closeMore(choice){if(this._mode==='ai'&&!this._fakeOpponent){this._clock.resume('more');this.tick();}else if(this._room&&this._room.menuPause&&this._room.menuPause.by===this._room.side)await this.command('menuClose');this._menuOpen=false;if(!this._alive)return;this.moreAction(choice);this.scheduleAI();},
  moreAction(choice){if(choice===0){if(this._mode==='online')this.command('resign');else this.modal('确认认输','确认后本局结束。',()=>{this._state={...this._state,status:'ended',winner:'black',reason:'resign',motif:'认输'};this.sync('end');});}else if(choice===1){if(this._mode==='online')this.command('request',{kind:'draw'});else this.toast('人机练习不接受协商和棋');}else if(choice===2)this.runtime.open('rules');else if(choice===3)this.runtime.open('settings');else if(choice===4)this.home();},
 
- async command(action,data={}){if(this.data.busy||!this._room)return;const optimistic=action==='move'?this.beginOptimisticMove(data):null;if(action==='move')this.stopCountdownCue();this.setData({busy:true});try{this.applyRoom(await Online.call(action,{...data,roomId:this._room.roomId,rev:this._room.rev}));if(this._optimisticMove===optimistic)this._optimisticMove=null;this._networkFailures=0;}catch(e){if(optimistic&&this._optimisticMove===optimistic)this.rollbackOptimisticMove();if(action==='move')this.setData({selectedId:''});if(action==='request')this.setData({pendingRequest:'',pendingUntil:0});this.handleNetworkError(e);this.toast(e&&e.message||'落子失败，请重新同步');if(this._room)await this.poll(true);}finally{if(this._alive)this.setData({busy:false,manualPaused:false});}},
+ async command(action,data={}){
+  if(this.data.busy||!this._room)return;
+  const target=this._room;this._commandPending=true;this.setData({busy:true});
+  const optimistic=action==='move'?this.beginOptimisticMove(data):null;
+  if(action==='move')this.stopCountdownCue();
+  try{
+   const room=await Online.call(action,{...data,roomId:target.roomId,rev:target.rev});
+   if(!this._alive)return;
+   this.applyRoom(room);
+   if(optimistic&&this._optimisticMove===optimistic)this.rollbackOptimisticMove();
+   this._networkFailures=0;
+  }catch(e){
+   // A poll can confirm the move before the command connection fails.
+   if(!this._alive||optimistic&&optimistic.settled)return;
+   if(optimistic&&this._optimisticMove===optimistic)this.rollbackOptimisticMove();
+   if(action==='move')this.setData({selectedId:''});
+   if(action==='request')this.setData({pendingRequest:'',pendingUntil:0});
+   this.handleNetworkError(e);this.toast(e&&e.message||'落子失败，请重新同步');
+   if(this._room)await this.poll(true);
+  }finally{this._commandPending=false;if(this._alive)this.setData({busy:false,manualPaused:false});}
+ },
  handleNetworkError(error){this._networkFailures=(this._networkFailures||0)+1;this._lastNetworkError=String(error&&error.message||error||'');if(this._networkFailures>=3&&!this._networkWarned){this._networkWarned=true;this.toast('网络不稳定，正在重连；服务器仍在计时');}},
  async poll(force=false){if(!this._room||this._polling||!this._alive||this._hidden||(!force&&this.data.busy))return;this._polling=true;try{let room;try{room=await Online.call('poll',{roomId:this._room.roomId,rev:this._room.rev});}catch(e){this.handleNetworkError(e);return;}try{this.applyRoom(room);}catch(e){console.error('room synchronization failed:',String(e&&e.message||e).slice(0,240));if(!this._syncWarned){this._syncWarned=true;this.toast('对局数据同步失败，请稍后重试');}return;}this._syncWarned=false;this._networkFailures=0;this._networkWarned=false;}finally{this._polling=false;}},
- applyRoom(room){if(!this._alive||this._mode&&this._mode!=='online'||!room||!room.state)return;room={...room,waiting:!!room.waiting&&!room.black};if(this._room&&room.roomId===this._room.roomId&&room.rev<this._room.rev)return;if(this._matchResolved&&room.waiting)return;const old=this._room;if(old&&room.roomId!==old.roomId){this._matchResolved=false;this._onlineSide=null;}const activeSide=room.side||this._onlineSide||(old&&old.side);if(activeSide)this._onlineSide=activeSide;const stateChanged=!!(!old||!old.state||old.rev!==room.rev&&JSON.stringify(old.state)!==JSON.stringify(room.state));const sampleOffset=(room.serverNow||Date.now())-Date.now();this._offset=Number.isFinite(this._offset)?Math.round(this._offset*.75+sampleOffset*.25):sampleOffset;this._room=room;this._state=room.state;if(stateChanged)this.stopCountdownCue();if(this.runtime)this.runtime.variant=room.state.variant||'dark';if(this._matchQueue&&room.waiting&&(!old||!old.waiting)){this._matchStartedAt=Date.now();this._matchFallbackAt=MATCH_HUMAN_WAIT_SECONDS+Math.floor(Math.random()*(MATCH_FAKE_MAX_SECONDS-MATCH_HUMAN_WAIT_SECONDS+1));this.setData({matchSeconds:0});}const identityChanged=!old||JSON.stringify([old.red,old.black])!==JSON.stringify([room.red,room.black]);const sideChanged=!old||old.side!==activeSide;const matchQueue=this._matchQueue||this.data.onlineMatch||room.match===true;const matched=!!(matchQueue&&!room.waiting&&(!old||old.waiting));if(matchQueue&&!room.waiting)this._matchResolved=true;const serverPreference=['red','black','rotate'].includes(room.seatPreference)?room.seatPreference:this.data.seatPreference;const eventChanged=!!room.event&&(!old||old.event!==room.event);clearTimeout(this._matchFoundTimer);const nextFlipped=sideChanged?activeSide==='black':this.data.flipped,topSide=nextFlipped?'red':'black',bottomSide=R.opposite(topSide),topProfile=room[topSide],bottomProfile=room[bottomSide];
-  this.setData({waiting:!!room.waiting,onlineMatch:matchQueue,matchFound:matched,matchFoundAt:matched?Date.now():this.data.matchFoundAt,roomId:room.roomId,seatPreference:serverPreference,seatMenu:room.waiting&&this.data.seatMenu,flipped:nextFlipped,topName:topProfile&&topProfile.nickname||this.data.topName,bottomName:bottomProfile&&bottomProfile.nickname||this.data.bottomName,topAvatar:topProfile&&topProfile.avatar||'',bottomAvatar:bottomProfile&&bottomProfile.avatar||'',busy:false,manualPaused:false,paused:false,selectedId:matched?'':this.data.selectedId});if(matched)this._matchFoundTimer=setTimeout(()=>{if(this._alive)this.setData({matchFound:false});},900);const changed=!old||stateChanged||old.waiting!==room.waiting; if(changed||identityChanged){const syncEvent=room.event&&/^undo-/.test(room.event)?'':(old?room.event:undefined);this.sync(syncEvent);}
+ applyRoom(room){
+  if(!this._alive||this._mode&&this._mode!=='online'||!room||!room.state)return;
+  room={...room,waiting:!!room.waiting&&!room.black};
+  const old=this._room;
+  if(old&&room.roomId===old.roomId&&room.rev<old.rev)return;
+  if(this._matchResolved&&room.waiting)return;
+  const preview=this._optimisticMove;
+  // A poll already in flight when we tapped still describes the old board.
+  if(preview&&room.roomId===preview.roomId&&room.rev<=preview.baseRev)return;
+  const confirmed=!!(preview&&room.roomId===preview.roomId&&presentationKey(room.state)===preview.key);
+  if(preview&&!confirmed)this.rollbackOptimisticMove();
+  if(old&&room.roomId!==old.roomId){this._matchResolved=false;this._onlineSide=null;}
+  const activeSide=room.side||this._onlineSide||(old&&old.side);
+  if(activeSide)this._onlineSide=activeSide;
+  const stateChanged=!!(!old||!old.state||old.rev!==room.rev&&JSON.stringify(old.state)!==JSON.stringify(room.state));
+  const sampleOffset=(room.serverNow||Date.now())-Date.now();
+  this._offset=Number.isFinite(this._offset)?Math.round(this._offset*.75+sampleOffset*.25):sampleOffset;
+  this._room=room;this._state=room.state;
+  if(stateChanged)this.stopCountdownCue();
+  if(this.runtime)this.runtime.variant=room.state.variant||'dark';
+  if(this._matchQueue&&room.waiting&&(!old||!old.waiting)){
+   this._matchStartedAt=Date.now();this._matchFallbackAt=MATCH_HUMAN_WAIT_SECONDS+Math.floor(Math.random()*(MATCH_FAKE_MAX_SECONDS-MATCH_HUMAN_WAIT_SECONDS+1));this.setData({matchSeconds:0});
+  }
+  const identityChanged=!old||JSON.stringify([old.red,old.black])!==JSON.stringify([room.red,room.black]);
+  const sideChanged=!old||old.side!==activeSide,matchQueue=this._matchQueue||this.data.onlineMatch||room.match===true;
+  const matched=!!(matchQueue&&!room.waiting&&(!old||old.waiting));
+  if(matchQueue&&!room.waiting)this._matchResolved=true;
+  const serverPreference=['red','black','rotate'].includes(room.seatPreference)?room.seatPreference:this.data.seatPreference;
+  const eventChanged=!!room.event&&(!old||old.event!==room.event);
+  const nextFlipped=sideChanged?activeSide==='black':this.data.flipped,topSide=nextFlipped?'red':'black',bottomSide=R.opposite(topSide),topProfile=room[topSide],bottomProfile=room[bottomSide];
+  clearTimeout(this._matchFoundTimer);
+  this.setData({waiting:!!room.waiting,onlineMatch:matchQueue,matchFound:matched||this.data.matchFound,matchFoundAt:matched?Date.now():this.data.matchFoundAt,roomId:room.roomId,seatPreference:serverPreference,seatMenu:room.waiting&&this.data.seatMenu,flipped:nextFlipped,topName:topProfile&&topProfile.nickname||this.data.topName,bottomName:bottomProfile&&bottomProfile.nickname||this.data.bottomName,topAvatar:topProfile&&topProfile.avatar||'',bottomAvatar:bottomProfile&&bottomProfile.avatar||'',busy:!!this._commandPending,manualPaused:false,paused:false,selectedId:matched?'':this.data.selectedId});
+  if(matched){clearTimeout(this._matchFoundTimer);this._matchFoundTimer=setTimeout(()=>{if(this._alive)this.setData({matchFound:false});},900);}
+  const changed=!old||stateChanged||old.waiting!==room.waiting;
+  if(changed||identityChanged||confirmed){const syncEvent=room.event&&/^undo-/.test(room.event)?'':(old?room.event:undefined);this.sync(syncEvent);}
+  if(confirmed){preview.settled=true;this._optimisticMove=null;}
   if(eventChanged&&room.event==='undo-accepted')this.toast('对方同意了悔棋');
   if(eventChanged&&room.event==='undo-rejected')this.toast('对方拒绝了悔棋');
-  this.tick();if(room.sticker&&(!old||!old.sticker||old.sticker.seq!==room.sticker.seq)&&room.serverNow-room.sticker.at<4000)this.showSticker(room.sticker.id);
-  const p=room.pending;if(p&&p.by!==room.side&&this._promptKey!==p.until){this._promptKey=p.until;wx.showModal({title:'对方请求'+({undo:'悔棋',restart:'再来一局',draw:'和棋'}[p.kind]),content:'是否同意对方的'+({undo:'悔棋',restart:'再来一局',draw:'和棋'}[p.kind])+'请求？',success:r=>this.command('reply',{accept:r.confirm})});}if(!p&&this.data.pendingRequest){const req=this.data.pendingRequest;this.setData({pendingRequest:'',pendingUntil:0});if(room.event==='restart-accepted')this.toast('对方同意了再来一局');else if(room.event==='restart-rejected')this.toast('对方拒绝了再来一局');else if(room.serverNow>=this.data.pendingUntil)this.toast('对方未回应，请求已失效');this.sync();}
+  this.tick();
+  if(room.sticker&&(!old||!old.sticker||old.sticker.seq!==room.sticker.seq)&&room.serverNow-room.sticker.at<4000)this.showSticker(room.sticker.id);
+  const p=room.pending;
+  if(p&&p.by!==room.side&&this._promptKey!==p.until){this._promptKey=p.until;wx.showModal({title:'对方请求'+({undo:'悔棋',restart:'再来一局',draw:'和棋'}[p.kind]),content:'是否同意对方的'+({undo:'悔棋',restart:'再来一局',draw:'和棋'}[p.kind])+'请求？',success:r=>this.command('reply',{accept:r.confirm})});}
+  if(!p&&this.data.pendingRequest){
+   const until=this.data.pendingUntil;this.setData({pendingRequest:'',pendingUntil:0});
+   if(room.event==='restart-accepted')this.toast('对方同意了再来一局');
+   else if(room.event==='restart-rejected')this.toast('对方拒绝了再来一局');
+   else if(room.serverNow>=until)this.toast('对方未回应，请求已失效');
+   this.sync();
+  }
  },
  onShareAppMessage(){const roomId=this.data.roomId||(this._room&&this._room.roomId)||'';return {title:'暗棋大乱斗 · 来一局中国象棋',query:roomId?'room='+encodeURIComponent(roomId):''};},
  async toggleStickers(){if(this.data.showStickers){this.setData({showStickers:false});return;}const ready=await this.loadStickers();if(!this._alive)return;if(!ready)return this.toast('表情加载失败，请重试');this.setData({showStickers:true});},
