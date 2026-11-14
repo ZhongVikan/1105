@@ -17,7 +17,7 @@ class Renderer {
   if(c&&this.runtime.scene==='game'){
    const revision=c._battle&&c._battle.revision;FX.frame(c,time);if(c._battle&&revision!==c._battle.revision)this.dirty=true;
    const warning=c.data.seconds<=10&&!c.data.ended&&!c.data.waiting&&!c.data.paused&&!c._hidden;
-   animate=!c.data.manualPaused&&!c._hidden&&((c._battle&&c._battle.active())||warning||(c.data.showResult&&time-c._resultShownAt<340)||c.data.matchFound);
+   animate=!c.data.manualPaused&&!c._hidden&&((c._battle&&(c._battle.animating?c._battle.animating(time):c._battle.active()))||warning||(c.data.showResult&&time-c._resultShownAt<340)||c.data.matchFound);
    if(!c._battle&&c.motion){const end=c.motion.at+FX.timing(c.motion.move).total;if(time<end)animate=true;else if(this.lastDraw<end)this.dirty=true;}
   }
   const authLoading=this.runtime.scene==='profile'&&(this.runtime.loginBusy||this.runtime._privacyBusy);
