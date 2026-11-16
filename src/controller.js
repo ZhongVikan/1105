@@ -107,7 +107,7 @@ module.exports={
   let result;try{result=predictOnlineMove(this._state,data&&data.id,data&&data.to);}catch(e){return null;}if(!result||!result.ok||!result.state||!result.state.lastMove)return null;
   const state=result.state,last=state.lastMove,key=presentationKey(state),patch=this.optimisticPatch(state);
   const pending={key,event:result.event,state,roomId:this._room.roomId,baseRev:this._room.rev};this._optimisticMove=pending;
-  this.presentTransition(result.event,state,patch,{silent:true,awaitReveal:!!last.revealed});
+  this.presentTransition(result.event,state,patch,{silent:true});
   pending.motion=this._battle&&this._battle.events[this._battle.events.length-1];this.setData(patch);return pending;
  },
  rollbackOptimisticMove(){
