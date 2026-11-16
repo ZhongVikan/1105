@@ -8,19 +8,13 @@ function timing(move={}){
  return {travel,reveal,contact:travel,impact:travel+reveal,
   total:Math.max(travel+reveal+110,travel+(move.fusionType?280:capture?360:110))};
 }
-function revealProgress(elapsed,t){
- const half=t.travel+t.reveal/2;
- if(t.revealOpenAt===undefined||elapsed<half)return clamp((elapsed-t.travel)/Math.max(1,t.reveal));
- // A concealed online move can close while the request is in flight. Hold
- // its back at the edge, then continue opening as soon as the face is known.
- return .5+.5*clamp((elapsed-t.revealOpenAt)/Math.max(1,t.reveal/2));
-}
+function revealProgress(elapsed,t){return clamp((elapsed-t.travel)/Math.max(1,t.reveal));}
 function pose(move,elapsed,point,out={},timings){
  const t=timings||timing(move),from=point(move.from),to=point(move.to||move.from),p=smooth(elapsed/t.travel),f=revealProgress(elapsed,t);
  out.x=from.x+(to.x-from.x)*p;out.y=from.y+(to.y-from.y)*p;
  out.lift=Math.sin(Math.PI*clamp(elapsed/t.travel))*2;out.scale=1;
  out.flipScale=t.reveal?Math.max(.035,Math.abs(Math.cos(Math.PI*f))):1;
- out.hidden=!!move.revealed&&(f<.5||t.revealOpenAt===Infinity);return out;
+ out.hidden=!!move.revealed&&f<.5;return out;
 }
 function particles(seed,count){
  // Precompute a small reusable event buffer. Never consume gameplay's random stream.
@@ -71,7 +65,7 @@ function over(renderer,motion,elapsed,flipped){
   const wave=clamp(age/230);if(wave<1)ring(c,at.x,at.y,22+28*smooth(wave),'#f1b84a',.65*(1-wave),1.3);
   sparks(renderer,motion,at.x,at.y,age,renderer.fxQuality);
  }
- if(m.revealed){const f=revealProgress(elapsed,t);if(f>.5){sweep(renderer,at.x,at.y,(f-.5)*2,.3);sparks(renderer,motion,at.x,at.y,elapsed-(t.revealOpenAt===undefined?t.travel+t.reveal/2:t.revealOpenAt),0,true);}}
+ if(m.revealed){const f=revealProgress(elapsed,t);if(f>.5){sweep(renderer,at.x,at.y,(f-.5)*2,.3);sparks(renderer,motion,at.x,at.y,elapsed-t.travel-t.reveal*.5,0,true);}}
 }
 function makeGlyph(renderer,label,size){
  const scale=1.5,canvas=wx.createCanvas();canvas.width=Math.ceil((label.length*size+32)*scale);canvas.height=Math.ceil((size+34)*scale);const c=canvas.getContext('2d');c.scale(scale,scale);

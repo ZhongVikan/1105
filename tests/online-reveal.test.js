@@ -22,8 +22,9 @@ for(const variant of ['dark','jieqi']){
   const {c,move}=setup(t,variant);c.beginOptimisticMove(move);const motion=c.motion;
   t.mock.timers.tick(motion.timings.travel+motion.timings.reveal*.75);
   const pose=FX.pose(motion.move,Date.now()-motion.at,p=>p,{},motion.timings);
-  assert.equal(pose.hidden,true,'unknown identity must keep the back visible until confirmation');
-  t.mock.timers.tick(1000);assert.equal(FX.frame(c,Date.now()),motion,'a slow response must not discard the reveal');
+  assert.equal(motion.pieces.find(p=>p.id===move.id).hidden,true,'unknown identity must keep the back visible until confirmation');
+  assert.equal(pose.hidden,false,'the presentation reaches the reveal end even while the face is unknown');
+  t.mock.timers.tick(1000);assert.equal(FX.frame(c,Date.now()),null,'a slow response must not keep the animation alive');
  });
  test(`${variant}: confirmation updates the animated face without replaying travel`,t=>{
   const {c,move,response}=setup(t,variant);c.beginOptimisticMove(move);const motion=c.motion,at=motion.at;
@@ -33,13 +34,13 @@ for(const variant of ['dark','jieqi']){
   assert.deepEqual(face,expected,'the live animation must use the confirmed piece, not a concealed preview');
   t.mock.timers.tick(motion.timings.total+10);assert.equal(c._battle.animating(Date.now()),false);
  });
- test(`${variant}: late confirmation resumes the same flip and opens within 150ms`,t=>{
+ test(`${variant}: late confirmation updates the settled face without replaying animation`,t=>{
   const {c,move,response,sounds}=setup(t,variant);c.beginOptimisticMove(move);const motion=c.motion;
   t.mock.timers.tick(1100);FX.frame(c,Date.now());c.applyRoom(response());
-  assert.equal(c.motion,motion);assert.equal(c._battle.serial,1);
-  t.mock.timers.tick(120);
-  const pose=FX.pose(motion.move,Date.now()-motion.at,p=>p,{},motion.timings);
-  assert.equal(pose.hidden,false);assert.ok(pose.flipScale>.99);
+  assert.equal(c.motion,null);assert.equal(c._battle.serial,1);
+  assert.equal(c._battle.active(),false,'late confirmation must not restart the completed animation');
+  assert.equal(c.data.pieces.find(p=>p.id===move.id).hidden,false);
+  t.mock.timers.tick(1);
   assert.equal(sounds.length,1,'authoritative feedback must be played once');
  });
 }

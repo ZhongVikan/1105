@@ -89,7 +89,7 @@ class Renderer {
   }
   ctx.drawImage(this.stationaryLayer,0,0,720,800);if(moving)FX.under(this,motion,elapsed,d.flipped);
   const draw=p=>{const animated=p.id===moving,at=animated?FX.pose(motion.move,elapsed,q=>this.boardPoint(q,d.flipped),this._movingPose||(this._movingPose={}),motion.timings):this.boardPoint(p,d.flipped);
-   let face=p,hidden=p.hidden;if(animated){hidden=motion.move.revealed?at.hidden:p.hidden;
+   let face=p,hidden=p.hidden;if(animated){hidden=motion.move.revealed?(p.hidden||at.hidden):p.hidden;
     if(motion.move.fusionType&&elapsed<(motion.timings||FX.timing(motion.move)).contact&&motion.move.sourcePieces)face=motion.move.sourcePieces[0];}
    ctx.save();ctx.translate(at.x,at.y-(at.lift||0));ctx.scale(at.flipScale||1,1);this.orientedDisc(0,0,33,face,rotationData,false,null,hidden);ctx.restore();
   };
