@@ -2,6 +2,7 @@ const FX=require('./battle-effects'),BattleTimeline=require('./battle-timeline')
 const G=require('../utils/game-engine'),R=require('../utils/rules-core'),S=require('../utils/storage'),AI=require('../utils/ai'),AIWorker=require('../utils/ai-worker-client'),Clock=require('../utils/turn-clock'),Audio=require('../utils/audio'),Online=require('../utils/online'),stickers=require('../utils/stickers');
 const Repetition=require('../utils/repetition'),Fusion=require('../utils/fusion'),FakeOpponents=require('../utils/fake-opponents');
 const names={red:'红方',black:'黑方'};
+const requestLabel=(kind,state)=>kind==='restart'?(state.status==='ended'?'再来一局':'重开'):kind==='undo'?'悔棋':'合棋';
 const MATCH_HUMAN_WAIT_SECONDS=10,MATCH_FAKE_MAX_SECONDS=20;
 // Poll more often while waiting for the opponent's move and back off while
 // it is our turn. A timer (rather than a fixed interval) prevents a slow
@@ -47,7 +48,7 @@ function publicState(state){const q=clone(state);q.pieces=state.pieces.map(publi
 function publicKey(state){return JSON.stringify({variant:state.variant,status:state.status,turn:state.turn,ply:state.ply,pendingChase:state.pendingChase||null,pieces:state.pieces.map(p=>{const hidden=!!p.hidden;return [p.id,p.x,p.y,hidden?R.controller(p):p.side,hidden?R.openingRole(p):p.kind,hidden];}).sort((a,b)=>a[0].localeCompare(b[0])),captured:(state.captured||[]).map(p=>[p.id,p.capturedBy,p.atPly]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])))});}
 function privateStateForOffline(state){return state&&Array.isArray(state.pieces)&&state.pieces.some(p=>p.hidden&&!p.kind)?G.newGame(undefined,state.variant||'dark'):state;}
 module.exports={
- data:{pieces:[],flipped:false,selectedId:'',turn:'red',topSide:'black',bottomSide:'red',topName:'黑方',bottomName:'红方',topCaptured:[],bottomCaptured:[],message:'',ply:0,showResult:false,resultTitle:'',resultDetail:'',unlucky:false,movingId:'',lastMoveId:'',revealId:'',captureId:'',ended:false,seconds:60,paused:false,mode:'ai',level:'normal',waiting:false,matchSeconds:0,matchFound:false,matchFoundAt:0,fakeOpponent:false,pendingRequest:'',pendingUntil:0,topAvatar:'',bottomAvatar:'',stickers,showStickers:false,stickerImage:'',stickerText:'',roomId:'',busy:false,manualPaused:false,inference:false,inferencePieces:[],inferenceSelectedId:'',inferenceLastMoveId:'',inferenceTopCaptured:[],inferenceBottomCaptured:[],inferenceMessage:'',inferenceAssumptionMenu:false,inferenceAssumptionOptions:[],onlineMatch:false,seatPreference:'rotate',seatMenu:false},
+ data:{pieces:[],flipped:false,selectedId:'',turn:'red',topSide:'black',bottomSide:'red',topName:'黑方',bottomName:'红方',topCaptured:[],bottomCaptured:[],message:'',ply:0,showResult:false,resultTitle:'',resultDetail:'',unlucky:false,movingId:'',lastMoveId:'',revealId:'',captureId:'',ended:false,seconds:60,paused:false,mode:'ai',level:'normal',waiting:false,matchSeconds:0,matchFound:false,matchFoundAt:0,fakeOpponent:false,pendingRequest:'',pendingRequestLabel:'',pendingUntil:0,topAvatar:'',bottomAvatar:'',stickers,showStickers:false,stickerImage:'',stickerText:'',roomId:'',busy:false,manualPaused:false,inference:false,inferencePieces:[],inferenceSelectedId:'',inferenceLastMoveId:'',inferenceTopCaptured:[],inferenceBottomCaptured:[],inferenceMessage:'',inferenceAssumptionMenu:false,inferenceAssumptionOptions:[],onlineMatch:false,seatPreference:'rotate',seatMenu:false},
  async onLoad(options){this._alive=true;this._token=0;this._audio=this.runtime&&this.runtime.audio||new Audio();this._audio.refresh();this._clock=new Clock();this._history=[];this._repetitionHistory=[];this._countdownCueKey='';this._fakeOpponent=null;this._fakeRestartRejected=false;this._fakeUndoUsed={};this._fakePending=null;this._fakeBotStickerCooldownUntil=0;this._onlineSide=null;this._matchQueue=options.mode==='online'&&options.match==='1';this._matchStartedAt=0;this._matchFallbackAt=0;this._matchResolved=false;this._state=G.newGame(undefined,options.variant||'dark');this._mode=options.mode==='online'?'online':'ai';this._level=['easy','normal','hard'].includes(options.level)?options.level:'normal';this.setData({mode:this._mode,level:this._level,matchSeconds:0,pendingRequest:'',pendingUntil:0});
   this._interval=setInterval(()=>this.tick(),250);
   if(this._mode==='online'){this.setData({waiting:true,onlineMatch:options.match==='1',fakeOpponent:false,seatPreference:options.seatPreference||'rotate'});try{await Promise.all(['stickersA','stickersB'].map(name=>new Promise((resolve,reject)=>wx.loadSubpackage({name,success:resolve,fail:reject}))));if(!this._alive)return;const action=options.room?'join':options.match==='1'?'match':'create';this.applyRoom(await Online.call(action,{roomId:options.room,variant:options.variant||'dark',seatPreference:this.data.seatPreference}));if(this._alive)this.startPolling();}catch(e){this.toast(e.message);this.home();}}
@@ -91,7 +92,7 @@ module.exports={
  },
  sync(event){if(this._optimisticMove&&!event&&this._commandPending){this.setData(this.optimisticPatch(this._optimisticMove.state));return;}if(this._inference&&publicKey(this._state)!==this._inference.formalKey)this.leaveInference('正式棋局已更新，已退出推理');if(this._state.status==='ended'&&['timeout','resign','draw','mutual-check','perpetual-check'].includes(this._state.reason))event=this._state.reason==='timeout'?'timeout':'end';const moved=['fusion','chase','move','capture','reveal','check','checkmate','stalemate','unlucky'].includes(event);const s=this._state;if(s.status==='ended'&&!moved)this.motion=null;if(this._repetitionHistory&&this._repetitionHistory.some(v=>v.ply>=s.ply)){this._repetitionHistory=this._repetitionHistory.filter(v=>v.ply<s.ply);this._longCheckWarning=null;}const top=this.data.flipped?'red':'black',bottom=R.opposite(top),ended=s.status==='ended',last=s.lastMove;const rp=this._room;
   const profile=this.runtime&&this.runtime.profile,player=side=>rp&&rp[side]?rp[side].nickname:this._fakeOpponent&&side==='black'?this._fakeOpponent.nickname:this._mode==='ai'&&side==='red'&&profile&&profile.nickname?profile.nickname:this._mode==='ai'&&side==='black'?({easy:'简易 · 菜就多练局',normal:'普通 · 不服就干场',hard:'困难 · 棋王修罗场'}[this._level]):names[side]+' · 你',avatar=side=>rp&&rp[side]?rp[side].avatar||'':this._fakeOpponent&&side==='black'?this._fakeOpponent.avatar||'':this._mode==='ai'&&side==='red'&&profile?profile.avatar||'':'';
-  const pendingMessage={restart:'等待对方同意再来一局',undo:'等待对方同意悔棋',draw:'等待对方同意和棋'}[this.data.pendingRequest]||'';
+  const pendingMessage=this.data.pendingRequest?'等待对方同意'+(this.data.pendingRequestLabel||requestLabel(this.data.pendingRequest,this._state)):'';
   const patch={pieces:G.displayPieces(s.pieces),turn:s.turn,topSide:top,bottomSide:bottom,topName:player(top),bottomName:player(bottom),topAvatar:avatar(top),bottomAvatar:avatar(bottom),topCaptured:s.captured.filter(p=>p.capturedBy===top),bottomCaptured:s.captured.filter(p=>p.capturedBy===bottom),message:pendingMessage|| (ended?'对局结束':rp&&rp.waiting?(this.data.onlineMatch?'正在匹配棋友':'等待棋友入座'):G.checked(s.pieces,s.turn)?names[s.turn]+'被将军，必须应将':names[s.turn]+'行棋'),ply:s.ply,selectedId:s.pendingChase||'',pendingChase:s.pendingChase||null,fusionUsed:s.fusionUsed||null,ended,showResult:ended?this.data.showResult:false,resultTitle:ended?s.motif:'',resultDetail:ended?(s.winner?names[s.winner]+'获胜':'双方和棋'):'',unlucky:ended&&s.reason==='unlucky',movingId:moved&&last?last.id:'',lastMoveId:last?last.id:'',revealId:moved&&last&&last.revealed?last.id:'',captureId:moved&&last&&last.capturedId?last.id:''};if(this._mode!=='online'&&this._clock){patch.seconds=this._clock.seconds();patch.paused=this._clock.reasons.size>0;}this.presentTransition(event,s,patch);this.setData(patch);this.updateResult(ended,s);
  },
  clearPresentation(){if(this._audio&&this._audio.cancelBattleQueue)this._audio.cancelBattleQueue();if(this._battle)this._battle.clear();this.motion=null;this.cue=null;clearTimeout(this._moveAudioTimer);for(const sound of this._battleSounds||[])clearTimeout(sound.timer);this._battleSounds=[];},
@@ -236,6 +237,11 @@ module.exports={
   this._stickersLoading=Promise.all(['stickersA','stickersB'].map(name=>new Promise((resolve,reject)=>{if(!wx.loadSubpackage)return resolve();wx.loadSubpackage({name,success:resolve,fail:reject});}))).then(()=>{this._stickersReady=true;return true;}).catch(()=>false).finally(()=>{this._stickersLoading=null;});return this._stickersLoading;
  },
 
+ cancelSelection(){
+  if(this._battle)this._battle.select(null);
+  if(this.data.inference)this.setData({inferenceSelectedId:''});
+  else this.setData({selectedId:''});
+ },
  async onPoint(e){if(this._inference){this.inferencePoint(e);return;}this.tick();if(this._state.status!=='playing'||this.data.waiting||this.data.busy||this.data.paused||this.data.pendingRequest)return;if(this._mode==='ai'&&this._state.turn!=='red')return;const onlineSide=this._onlineSide||(this._room&&this._room.side);if(this._mode==='online'&&(!this._room||this._room.waiting||!onlineSide||this._state.turn!==onlineSide))return;
   const {point,pieceId}=e.detail,p=this._state.pieces.find(v=>v.id===pieceId),selected=this.data.selectedId;if(selected===pieceId){if(this._battle)this._battle.select(null);this.setData({selectedId:''});return;}
   if(this._state.variant==='fusion'&&selected&&Fusion.attempt(this._state,selected,point)){
@@ -248,18 +254,56 @@ module.exports={
  finishChase(){const onlineSide=this._onlineSide||(this._room&&this._room.side);if(!this._state.pendingChase||this.data.pendingRequest||this.data.paused||this._mode==='ai'&&this._state.turn!=='red'||this._mode==='online'&&this._state.turn!==onlineSide)return;const id=this._state.pendingChase;return this._mode==='online'?this.command('move',{id,to:null}):this.localMove(id,null);},
  flip(){this.setData({flipped:!this.data.flipped});this.sync();if(this._inference)this.inferenceView();},
  modal(title,content,fn){this.tick();if(this._state.status==='playing')this._clock.pause('modal');this._token++;wx.showModal({title,content,success:r=>{this._audio.effect('click');if(r.confirm)fn();},complete:()=>{this._clock.resume('modal');this.tick();this.scheduleAI();}});},
- requestFake(kind){if(this.data.pendingRequest)return this.toast('已有请求等待对方回应');if(kind==='undo'){if(!this._history.length)return this.toast('没有可悔棋记录');const side='red',ply=this._state&&Number.isFinite(this._state.ply)?this._state.ply:null;this._fakeUndoUsed=this._fakeUndoUsed||{};if(ply!==null&&this._fakeUndoUsed[side]===ply)return this.toast('本手已请求过悔棋');if(ply!==null)this._fakeUndoUsed[side]=ply;}this.setData({pendingRequest:kind,pendingUntil:Date.now()+15000});this.sync();this.toast(kind==='undo'?'已发送悔棋请求，等待对方回应':'已发送再来一局请求，等待对方回应');clearTimeout(this._fakeRequestTimer);this._fakeRequestTimer=setTimeout(()=>{if(this.data.pendingRequest!==kind)return;const ok=Math.random()<(kind==='undo'?.2:.85);this.setData({pendingRequest:'',pendingUntil:0});if(ok){if(kind==='undo'){do{this._state=this._history.pop();}while(this._state.turn!=='red'&&this._history.length);this._repetitionHistory=[];this._longCheckWarning=null;this._clock.start();this.sync();this.toast('对方同意了悔棋');this.scheduleAI();}else{this._fakeRestartRejected=false;this._fakeUndoUsed={};this._state=G.newGame(undefined,this._state.variant||'dark');this._history=[];this._repetitionHistory=[];this._clock.start();this.sync();this.toast('对方同意了再来一局');}}else{if(kind==='restart')this._fakeRestartRejected=true;this.sync();this.toast(kind==='undo'?'对方拒绝了悔棋':'对方拒绝了再来一局');}},1200+Math.floor(Math.random()*1800));},
+ requestFake(kind){
+  if(this.data.pendingRequest)return this.toast('已有请求等待对方回应');
+  if(this._state.status!=='playing'&&kind!=='restart')return this.toast('对局已结束，请重开');
+  if(kind==='undo'){
+   if(!this._history.length)return this.toast('没有可悔棋记录');
+   const side='red',ply=this._state&&Number.isFinite(this._state.ply)?this._state.ply:null;
+   this._fakeUndoUsed=this._fakeUndoUsed||{};
+   if(ply!==null&&this._fakeUndoUsed[side]===ply)return this.toast('本手已请求过悔棋');
+   if(ply!==null)this._fakeUndoUsed[side]=ply;
+  }
+  const label=requestLabel(kind,this._state);this._token++;
+  this.setData({pendingRequest:kind,pendingRequestLabel:label,pendingUntil:Date.now()+15000});this.sync();
+  this.toast('已发送'+label+'请求，等待对方回应');clearTimeout(this._fakeRequestTimer);
+  this._fakeRequestTimer=setTimeout(()=>{
+   if(!this._alive||this.data.pendingRequest!==kind)return;
+   this.setData({pendingRequest:'',pendingRequestLabel:'',pendingUntil:0});
+   if(this._state.status!=='playing'&&kind!=='restart'){this.sync();return;}
+   const ok=Math.random()<(kind==='restart'?.85:.2);
+   if(ok){
+    if(kind==='undo'){
+     do{this._state=this._history.pop();}while(this._state.turn!=='red'&&this._history.length);
+     this._repetitionHistory=[];this._longCheckWarning=null;this._clock.start();
+    }else if(kind==='draw')this._state=G.finish(this._state,'draw');
+    else{
+     this._fakeRestartRejected=false;this._fakeUndoUsed={};this._state=G.newGame(undefined,this._state.variant||'dark');
+     this._history=[];this._repetitionHistory=[];this._longCheckWarning=null;this._clock.start();
+    }
+   }else if(kind==='restart')this._fakeRestartRejected=true;
+   this.sync();this.toast('对方'+(ok?'同意':'拒绝')+'了'+label);this.scheduleAI();
+  },1200+Math.floor(Math.random()*1800));
+ },
+ requestOnline(kind){
+  if(this.data.busy||this._sendingRequest)return this.toast('操作处理中，请稍候');
+  if(this.data.pendingRequest||this._room&&this._room.pending)return this.toast('等待对方回应');
+  if(!this._room||!this._room.black)return this.toast('请等待对手入座');
+  if(this._state.status!=='playing'&&kind!=='restart')return this.toast('对局已结束，请重开');
+  const label=requestLabel(kind,this._state);this._sendingRequest=kind;
+  this.setData({pendingRequest:kind,pendingRequestLabel:label,pendingUntil:Date.now()+15000});this.sync();
+  if(typeof wx!=='undefined')this.toast('已发送'+label+'请求，等待对方回应');return this.command('request',{kind});
+ },
  rematchFake(){const variant=this._state&&this._state.variant||this.runtime&&this.runtime.variant||'dark';this._fakeRestartRejected=false;this._token++;if(this.runtime&&typeof this.runtime.startGame==='function')return this.runtime.startGame({mode:'online',match:'1',variant});this.toast('正在重新匹配棋友');return false;},
- restart(){if(this._inference){this.leaveInference();return;}if(this.data.pendingRequest)return this.toast('等待对方回应');if(this._fakeOpponent)return this._fakeRestartRejected?this.rematchFake():this.requestFake('restart');if(this._mode==='online'){if(this._room&&!this._room.black){this.toast('对方已离开房间，无法再来一局');return;}this.setData({pendingRequest:'restart',pendingUntil:Date.now()+15000});this.sync();this.command('request',{kind:'restart'});return;}this.modal('重新开始','重新洗牌并开始新对局？',()=>{this._state=G.newGame(undefined,this._state.variant||'dark');this._history=[];this._repetitionHistory=[];this._longCheckWarning=null;this._clock.start();this.sync();});},
- undo(){if(this._inference){this.undoInference();return;}if(this.data.pendingRequest)return this.toast('等待对方回应');if(this._fakeOpponent){if(!this._history.length)return this.toast('没有可悔棋记录');return this.requestFake('undo');}if(this._state.status!=='playing')return this.toast('对局已结束，请重开');if(this._mode==='online'){this.setData({pendingRequest:'undo',pendingUntil:Date.now()+15000});this.sync();this.command('request',{kind:'undo'});return;}if(!this._history.length)return this.toast('没有可悔棋记录');this.modal('确认悔棋',(['classic','fusion'].includes(this._state.variant)?'退回你上一次行棋之前。':'退回你上一次行棋之前；暗棋/揭棋中已看到的暗子身份不会从记忆中消失。'),()=>{do{this._state=this._history.pop();}while(this._state.turn!=='red'&&this._history.length);this._clock.start();this.sync();});},
+ restart(){if(this._inference){this.leaveInference();return;}if(this.data.pendingRequest)return this.toast('等待对方回应');if(this._fakeOpponent)return this._fakeRestartRejected?this.rematchFake():this.requestFake('restart');if(this._mode==='online'){if(this._room&&!this._room.black){this.toast('对方已离开房间，无法再来一局');return;}return this.requestOnline('restart');}this.modal('重新开始','重新洗牌并开始新对局？',()=>{this._state=G.newGame(undefined,this._state.variant||'dark');this._history=[];this._repetitionHistory=[];this._longCheckWarning=null;this._clock.start();this.sync();});},
+ undo(){if(this._inference){this.undoInference();return;}if(this.data.pendingRequest)return this.toast('等待对方回应');if(this._fakeOpponent){if(!this._history.length)return this.toast('没有可悔棋记录');return this.requestFake('undo');}if(this._state.status!=='playing')return this.toast('对局已结束，请重开');if(this._mode==='online')return this.requestOnline('undo');if(!this._history.length)return this.toast('没有可悔棋记录');this.modal('确认悔棋',(['classic','fusion'].includes(this._state.variant)?'退回你上一次行棋之前。':'退回你上一次行棋之前；暗棋/揭棋中已看到的暗子身份不会从记忆中消失。'),()=>{do{this._state=this._history.pop();}while(this._state.turn!=='red'&&this._history.length);this._clock.start();this.sync();});},
  async more(){if(this._inference){this.toast('推理期间请使用推理操作按钮');return;}if(this._menuOpen)return;this._menuOpen=true;this.tick();this._token++;let choice;
   if(this._mode==='ai'&&!this._fakeOpponent&&this._state.status==='playing'){this._clock.pause('more');this.tick();}
-  else if(this._mode==='online'&&this._state.status==='playing'){await this.command('menuOpen');if(this._room&&this._room.menuPause)this.toast('真人局菜单最多暂停15秒');}
   if(!this._alive){this._menuOpen=false;return;}
-  try{wx.showActionSheet({itemList:['认输','协商和棋','游戏规则','声音设置','返回首页'],success:r=>{choice=r.tapIndex;this._audio.effect('click');},complete:()=>this.closeMore(choice)});}catch(error){this.closeMore();}
+  try{wx.showActionSheet({itemList:['认输','协商合棋','游戏规则','声音设置','返回首页'],success:r=>{choice=r.tapIndex;this._audio.effect('click');},complete:()=>this.closeMore(choice)});}catch(error){this.closeMore();}
  },
- async closeMore(choice){if(this._mode==='ai'&&!this._fakeOpponent){this._clock.resume('more');this.tick();}else if(this._room&&this._room.menuPause&&this._room.menuPause.by===this._room.side)await this.command('menuClose');this._menuOpen=false;if(!this._alive)return;this.moreAction(choice);this.scheduleAI();},
- moreAction(choice){if(choice===0){if(this._mode==='online')this.command('resign');else this.modal('确认认输','确认后本局结束。',()=>{this._state={...this._state,status:'ended',winner:'black',reason:'resign',motif:'认输'};this.sync('end');});}else if(choice===1){if(this._mode==='online')this.command('request',{kind:'draw'});else this.toast('人机练习不接受协商和棋');}else if(choice===2)this.runtime.open('rules');else if(choice===3)this.runtime.open('settings');else if(choice===4)this.home();},
+ async closeMore(choice){if(this._mode==='ai'&&!this._fakeOpponent){this._clock.resume('more');this.tick();}this._menuOpen=false;if(!this._alive)return;this.moreAction(choice);this.scheduleAI();},
+ moreAction(choice){if(choice===0){if(this._mode==='online')this.command('resign');else this.modal('确认认输','确认后本局结束。',()=>{this._state={...this._state,status:'ended',winner:'black',reason:'resign',motif:'认输'};this.sync('end');});}else if(choice===1){if(this._fakeOpponent)return this.requestFake('draw');if(this._mode==='online')return this.requestOnline('draw');this.toast('人机练习不接受协商合棋');}else if(choice===2)this.runtime.open('rules');else if(choice===3)this.runtime.open('settings');else if(choice===4)this.home();},
 
  async command(action,data={}){
   if(this.data.busy||!this._room)return;
@@ -277,10 +321,10 @@ module.exports={
    if(!this._alive||optimistic&&optimistic.settled)return;
    if(optimistic&&this._optimisticMove===optimistic)this.rollbackOptimisticMove();
    if(action==='move')this.setData({selectedId:''});
-   if(action==='request')this.setData({pendingRequest:'',pendingUntil:0});
+   if(action==='request'){this.setData({pendingRequest:'',pendingRequestLabel:'',pendingUntil:0});this.sync();}
    this.handleNetworkError(e);this.toast(e&&e.message||'落子失败，请重新同步');
    if(this._room)await this.poll(true);
-  }finally{this._commandPending=false;if(this._alive)this.setData({busy:false,manualPaused:false});}
+  }finally{this._commandPending=false;if(action==='request')this._sendingRequest=null;if(this._alive)this.setData({busy:false,manualPaused:false});}
  },
  handleNetworkError(error){this._networkFailures=(this._networkFailures||0)+1;this._lastNetworkError=String(error&&error.message||error||'');if(this._networkFailures>=3&&!this._networkWarned){this._networkWarned=true;this.toast('网络不稳定，正在重连；服务器仍在计时');}},
  async poll(force=false){if(!this._room||this._polling||!this._alive||this._hidden||(!force&&this.data.busy))return;this._polling=true;try{let room;try{room=await Online.call('poll',{roomId:this._room.roomId,rev:this._room.rev});}catch(e){this.handleNetworkError(e);return;}try{this.applyRoom(room);}catch(e){console.error('room synchronization failed:',String(e&&e.message||e).slice(0,240));if(!this._syncWarned){this._syncWarned=true;this.toast('对局数据同步失败，请稍后重试');}return;}this._syncWarned=false;this._networkFailures=0;this._networkWarned=false;}finally{this._polling=false;}},
@@ -320,18 +364,37 @@ module.exports={
   const changed=!old||stateChanged||old.waiting!==room.waiting;
   if(changed||identityChanged||confirmed){const syncEvent=room.event&&/^undo-/.test(room.event)?'':(old?room.event:undefined);this.sync(syncEvent);}
   if(confirmed){preview.settled=true;this._optimisticMove=null;}
-  if(eventChanged&&room.event==='undo-accepted')this.toast('对方同意了悔棋');
-  if(eventChanged&&room.event==='undo-rejected')this.toast('对方拒绝了悔棋');
   this.tick();
   if(room.sticker&&(!old||!old.sticker||old.sticker.seq!==room.sticker.seq)&&room.serverNow-room.sticker.at<4000)this.showSticker(room.sticker.id);
-  const p=room.pending;
-  if(p&&p.by!==room.side&&this._promptKey!==p.until){this._promptKey=p.until;wx.showModal({title:'对方请求'+({undo:'悔棋',restart:'再来一局',draw:'和棋'}[p.kind]),content:'是否同意对方的'+({undo:'悔棋',restart:'再来一局',draw:'和棋'}[p.kind])+'请求？',success:r=>this.command('reply',{accept:r.confirm})});}
-  if(!p&&this.data.pendingRequest){
-   const until=this.data.pendingUntil;this.setData({pendingRequest:'',pendingUntil:0});
-   if(room.event==='restart-accepted')this.toast('对方同意了再来一局');
-   else if(room.event==='restart-rejected')this.toast('对方拒绝了再来一局');
-   else if(room.serverNow>=until)this.toast('对方未回应，请求已失效');
-   this.sync();
+  this.applyRequestFeedback(room,old);
+
+ },
+ applyRequestFeedback(room,old){
+  const p=room.pending,result=room.requestResult;
+  const fresh=!!(result&&old&&(!old.requestResult||old.requestResult.seq!==result.seq));
+  if(fresh){
+   const own=result.by===(old.side||room.side),label=result.label||requestLabel(result.kind,room.state);
+   if(result.outcome==='expired')this.toast(own?'对方未回应，'+label+'请求已失效':'对方的'+label+'请求已失效');
+   else if(own)this.toast('对方'+(result.outcome==='accepted'?'同意':'拒绝')+'了'+label);
+   else this.toast('已'+(result.outcome==='accepted'?'同意':'拒绝')+'对方的'+label+'请求');
+  }
+  // Keep feedback working while an older cloud function is being replaced.
+  if(!result&&old&&old.pending&&!p){
+   const pending=old.pending,label=pending.label||requestLabel(pending.kind,old.state),own=pending.by===old.side;
+   if(room.event===pending.kind+'-accepted'||room.event===pending.kind+'-rejected'){
+    const accept=room.event.endsWith('-accepted');this.toast(own?'对方'+(accept?'同意':'拒绝')+'了'+label:'已'+(accept?'同意':'拒绝')+'对方的'+label+'请求');
+   }else if(room.serverNow>=pending.until)this.toast(own?'对方未回应，'+label+'请求已失效':'对方的'+label+'请求已失效');
+  }
+  if(p&&p.by===room.side){
+   this.setData({pendingRequest:p.kind,pendingRequestLabel:p.label||requestLabel(p.kind,room.state),pendingUntil:Date.now()+Math.max(0,p.until-room.serverNow)});
+  }else if(!p&&this.data.pendingRequest&&(!this._sendingRequest||fresh)){
+   this.setData({pendingRequest:'',pendingRequestLabel:'',pendingUntil:0});this.sync();
+  }
+  if(!p){this._promptKey='';return;}
+  const key=JSON.stringify([room.roomId,p.kind,p.by,p.until]);
+  if(p.by!==room.side&&this._promptKey!==key){
+   this._promptKey=key;const label=p.label||requestLabel(p.kind,room.state);
+   wx.showModal({title:'对方请求'+label,content:'是否同意对方的'+label+'请求？',success:r=>this.command('reply',{accept:r.confirm})});
   }
  },
  onShareAppMessage(){const roomId=this.data.roomId||(this._room&&this._room.roomId)||'';return {title:'暗棋大乱斗 · 来一局中国象棋',query:roomId?'room='+encodeURIComponent(roomId):''};},
