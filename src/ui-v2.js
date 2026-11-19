@@ -162,9 +162,14 @@ function install(Renderer){const p=Renderer.prototype;
  const previousBattlePlayer=p.player;
  p.player=function(side,name,avatar,y,captured,data,now,capturePlacement='below'){
  const red=side==='red',sy=red?1257:198,active=data.turn===side&&!data.ended&&!data.waiting,rotateBar=this.beginPlayerPerspective(data,side,y);
- if(!this.battleArt([44,sy,774,105],16,y,343,48,42,[red?320:500,sy+12,114,81,12,red?651:610,250])){this.endPlayerPerspective(rotateBar);return previousBattlePlayer.call(this,side,name,avatar,y,captured,data,now,capturePlacement);}
+ const box=[44,sy,774,105];
+ if(!this.battleArt(box,16,y,343,48,42,[red?320:500,sy+12,114,81,12,red?651:610,250])){this.endPlayerPerspective(rotateBar);return previousBattlePlayer.call(this,side,name,avatar,y,captured,data,now,capturePlacement);}
  // The source portrait is retained unless an actual player avatar is available.
- const c=this.ctx;c.save();c.beginPath();c.arc(45,y+24,18,0,Math.PI*2);c.clip();this.image(avatar,27,y+6,36,36);c.restore();
+ // The red and black portraits have different centers in the source artwork.
+ // Apply battleArt's fit and centering to both the clipping circle and image.
+ const portrait=red?{x:105.5,y:1307}:{x:108.5,y:248.5},k=Math.min(343/box[2],48/box[3]);
+ const cx=16+(343-box[2]*k)/2+(portrait.x-box[0])*k,cy=y+(48-box[3]*k)/2+(portrait.y-box[1])*k,r=36*k;
+ const c=this.ctx;c.save();c.beginPath();c.arc(cx,cy,r,0,Math.PI*2);c.clip();this.image(avatar,cx-r,cy-r,r*2,r*2);c.restore();
  const chars=Array.from((name||'').replace(/\s*·\s*/g,'·')),limit=active?5:13,short=chars.slice(0,limit).join('')+(chars.length>limit?'…':'');this.text(short,74,y+17,12.5,red?'#a52612':'#30302d','left',true);
  this.text(active?(data.paused?'计时暂停':'当前行棋'):'等待对方',74,y+34,11.5,'#a58c70','left',true);
  if(active){this.battleArt([590,1273,214,71],140.5,y+8,94,32,30,[665,1280,77,54,7,120]);this.ctx.save();this.ctx.shadowColor='#fff5ae';this.ctx.shadowOffsetY=0.6;this.text(data.seconds+'秒',226.5,y+25,19.5,'#c1200a','right',true);this.ctx.restore();}
