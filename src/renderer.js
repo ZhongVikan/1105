@@ -1,5 +1,6 @@
 const FX=require('./battle-effects'),Resolution=require('./render-resolution');
 const C=require('../utils/coordinates'),S=require('../utils/storage'),rules=require('./rules'),rulesCore=require('../utils/rules-core'),pieceFont=require('../utils/piece-font');
+const {decodeImage,loadAvatar}=require('../utils/avatar-image');
 const VARIANTS={dark:'暗棋',classic:'经典象棋',jieqi:'揭棋',fusion:'合棋'};
 const DISCLAIMER='抵制不良游戏，拒绝盗版游戏。注意自我保护，谨防受骗上当。适度游戏益脑，沉迷游戏伤身。合理安排时间，享受健康生活。创作者Vikan';
 class Renderer {
@@ -32,9 +33,96 @@ class Renderer {
  text(text,x,y,size=16,color='#392f25',align='left',bold=false){const c=this.ctx;c.fillStyle=color;c.font=(bold?'bold ':'')+size+'px "Noto Sans CJK SC", sans-serif';c.textAlign=align;c.textBaseline='middle';c.fillText(String(text),x,y);}
  wrap(text,x,y,width,size=13,color='#786b5a',lineHeight=21){let line='',yy=y;for(const char of text){this.ctx.font=size+'px "Noto Sans CJK SC", sans-serif';if(this.ctx.measureText(line+char).width>width&&line){this.text(line,x,yy,size,color);yy+=lineHeight;line=char;}else line+=char;}if(line)this.text(line,x,yy,size,color);return yy+lineHeight;}
  button(label,x,y,w,h,action,primary=false){const c=this.ctx,g=c.createLinearGradient(x,y,x,y+h);g.addColorStop(0,primary?'#bb874b':'#fffaf0');g.addColorStop(1,primary?'#89592e':'#eddfc9');c.save();c.shadowColor='#5e3e2225';c.shadowBlur=8;c.shadowOffsetY=3;this.card(x,y,w,h,g,primary?'#ac743b':'#dccbad');c.restore();this.text(label,x+w/2,y+h/2,Math.min(16,w<85?13:16),primary?'#fffaf0':'#695036','center',primary);this.targets.push({x,y,w,h,action});}
- image(src,x,y,w,h){if(!src)return false;let rec=this.images.get(src);if(!rec){rec={image:null};this.images.set(src,rec);const load=url=>{const im=wx.createImage();im.onload=()=>{rec.image=im;this.invalidate();};im.onerror=()=>{rec.error=true;};im.src=url;};
-   if(src.startsWith('cloud://')&&wx.cloud)wx.cloud.getTempFileURL({fileList:[src]}).then(r=>{const url=r.fileList[0]&&r.fileList[0].tempFileURL;if(url)load(url);}).catch(()=>{});else load(src);
-  }if(rec.image){this.ctx.drawImage(rec.image,x,y,w,h);return true;}return false;}
+ avatarImage(src) {
+  if (!src) return null;
+  const controller = this.runtime.controller;
+  const roomId = controller && controller.data.roomId || '';
+  const images = this.avatarImages || (this.avatarImages = new Map());
+  const cached = images.get(src);
+  if (cached && (cached.image || cached.roomId === roomId)) return cached.image;
+
+  const record = { roomId, image: null };
+  images.set(src, record);
+  if (images.size > 16) images.delete(images.keys().next().value);
+  const fetch = async () => {
+   const image = await loadAvatar(src, roomId);
+   if (images.get(src) !== record) return;
+   record.image = image;
+   this.invalidate();
+  };
+  fetch().catch(() => {
+   if (!roomId) return;
+   setTimeout(() => {
+    const current = this.runtime.controller;
+    if (images.get(src) !== record || !current || current.data.roomId !== roomId) return;
+    if (current.data.topAvatar === src || current.data.bottomAvatar === src) fetch().catch(() => {});
+   }, 2000);
+  });
+  return null;
+ }
+ drawAvatar(src, cx, cy, radius) {
+  const image = this.avatarImage(src);
+  if (!image) return false;
+  const crop = Math.min(image.width, image.height);
+  if (!crop) return false;
+  const ctx = this.ctx;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fillStyle = '#faf0df';
+  ctx.fill();
+  ctx.clip();
+  ctx.drawImage(image, (image.width - crop) / 2, (image.height - crop) / 2, crop, crop,
+   cx - radius, cy - radius, radius * 2, radius * 2);
+  ctx.restore();
+  return true;
+ }
+ drawSticker(src, x, y, size) {
+  let record = this.images.get(src);
+  if (!record) {
+   record = { image: null };
+   this.images.set(src, record);
+   decodeImage(src).then(image => {
+    record.image = image;
+    this.invalidate();
+   }, () => { record.error = true; });
+  }
+  let image = record.image;
+  if (!image || !image.width || !image.height) return;
+
+  // Trim the shared transparent gutter. Half-size passes smooth thin strokes
+  // on canvases that only support bilinear filtering.
+  const padding = 24 / 512;
+  const backingSize = size * this.scale * this.dpr / (1 - 2 * padding);
+  while (Math.min(image.width, image.height) >= backingSize * 2) {
+   const width = Math.floor(image.width / 2), height = Math.floor(image.height / 2);
+   const sizes = record.sizes || (record.sizes = new Map());
+   let layer = sizes.get(width);
+   if (!layer) {
+    layer = wx.createCanvas();
+    layer.width = width;
+    layer.height = height;
+    const ctx = layer.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(image, 0, 0, width, height);
+    sizes.set(width, layer);
+   }
+   image = layer;
+  }
+  const inset = Math.min(image.width, image.height) * padding;
+  const width = image.width - 2 * inset, height = image.height - 2 * inset;
+  const scale = size / Math.max(width, height);
+  const ctx = this.ctx;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(image, inset, inset, width, height, x + (size - width * scale) / 2,
+   y + (size - height * scale) / 2, width * scale, height * scale);
+  ctx.restore();
+ }
  disc(x,y,r,label,side='red',hidden=false,selected=false){const c=this.ctx;c.save();c.translate(x,y-(selected?3:0));c.shadowColor=selected?'#a77d4055':'#60432255';c.shadowBlur=selected?12:4;c.shadowOffsetY=selected?8:4;
   c.beginPath();c.arc(0,2,r,0,Math.PI*2);c.fillStyle='#a87942';c.fill();c.shadowBlur=0;c.shadowOffsetY=0;
   const g=c.createRadialGradient(-r*.3,-r*.45,1,0,0,r*1.25);g.addColorStop(0,hidden?'#edd2a1':'#fff1c8');g.addColorStop(1,hidden?'#b98344':'#d6a566');c.beginPath();c.arc(0,0,r,0,Math.PI*2);c.fillStyle=g;c.fill();c.strokeStyle='#a97940';c.lineWidth=1;c.stroke();c.beginPath();c.arc(0,0,r-3,0,Math.PI*2);c.strokeStyle='#f8e3b5';c.stroke();c.beginPath();c.arc(0,0,r-5,0,Math.PI*2);c.strokeStyle='#bb9056';c.lineWidth=.7;c.stroke();
@@ -60,7 +148,8 @@ class Renderer {
  ruleScene(){this.header(VARIANTS[this.runtime.variant||'dark']+'规则');const c=this.ctx,top=this.top+45,bottom=this.height-this.bottom-18;c.save();c.beginPath();c.rect(18,top,339,bottom-top);c.clip();let y=top+15-this.runtime.scroll;for(const section of rules.forVariant(this.runtime.variant||'dark').filter(section=>!section.hidden)){this.text(section.title,28,y,17,'#6b4b2e',undefined,true);y=this.wrap(section.body,28,y+30,315,14,'#625444',24)+22;}c.restore();this.maxScroll=Math.max(0,y+this.runtime.scroll-bottom);}
  profileButtonRect(){return {x:40,y:this.top+235,w:295,h:48};}
  profileScene(){this.header('对局身份');this.disc(187.5,this.top+91,35,'帥');this.wrap('经你确认的头像昵称将展示给对局对手。未授权仍可进行人机练习。',40,this.top+160,295,14);const b=this.profileButtonRect();this.card(b.x,b.y,b.w,b.h,'#976535');this.text(this.runtime.loginBusy?'正在登录…':this.runtime._privacyBusy?'正在确认隐私授权…':'点击授权头像昵称',187.5,b.y+24,16,'#fff','center');if(!this.runtime.authButton)this.targets.push({...b,action:()=>this.runtime.prepareProfile()});this.wrap('首次点击确认隐私授权，再点击继续授权头像昵称。',40,b.y+82,295,12);this.button('查看隐私保护指引',70,b.y+115,235,38,()=>this.runtime.openPrivacy());}
- player(side,name,avatar,y,captured,data,now){const active=data.turn===side&&!data.ended&&!data.waiting,rotateBar=this.beginPlayerPerspective(data,side,y);this.card(16,y,343,48,active?'#f4e5c9':'#fffaf2',active?'#c79e61':'#ede3d3');const ctx=this.ctx;ctx.save();ctx.beginPath();ctx.arc(41,y+24,17,0,Math.PI*2);ctx.clip();const loaded=this.image(avatar,24,y+7,34,34);ctx.restore();if(!loaded)this.disc(41,y+23,16,side==='red'?'帥':'將',side);
+ player(side,name,avatar,y,captured,data,now){const active=data.turn===side&&!data.ended&&!data.waiting,rotateBar=this.beginPlayerPerspective(data,side,y);this.card(16,y,343,48,active?'#f4e5c9':'#fffaf2',active?'#c79e61':'#ede3d3');const ctx=this.ctx;
+  if(!this.drawAvatar(avatar,41,y+24,19))this.disc(41,y+23,16,side==='red'?'帥':'將',side);
   if(active){ctx.beginPath();ctx.arc(41,y+24,20,0,Math.PI*2);ctx.strokeStyle='rgba(172,128,60,'+(.45+.25*Math.sin(now/600))+')';ctx.lineWidth=2;ctx.stroke();}
 
   const short=Array.from(name).slice(0,14).join('');this.text(short,68,y+17,12,'#514030');this.text(active?(data.paused?'计时暂停':'当前行棋'):'等待对方',68,y+34,11,'#9c8567');if(active)this.text(data.seconds+'秒',342,y+25,23,data.seconds<=10?'#c33d2b':'#997640','right',true);
@@ -70,7 +159,7 @@ class Renderer {
   this.board(d,b,c.motion,now);const bottom=b.y+b.h+12;this.player(d.bottomSide,d.bottomName,d.bottomAvatar,bottom,d.bottomCaptured,d,now);
   this.text(d.message||'准备棋局…',20,bottom+114+this.trayExtra,12,'#846545');const by=bottom+132+this.trayExtra;[['悔棋','undo'],['翻转','flip'],['重开','restart'],['更多','more']].forEach(([label,fn],i)=>this.button(label,16+i*88,by,79,46,()=>c[fn]()));
   if(!d.waiting&&!d.ended)this.button('表情',301,bottom+100+this.trayExtra,58,28,()=>c.toggleStickers());
-  if(d.stickerImage){this.image(d.stickerImage,102,b.y+b.h*.25,171,171);}
+  if(d.stickerImage)this.drawSticker(d.stickerImage,102,b.y+b.h*.25,171);
   if(d.waiting){const y=this.top+145;this.overlay();const expanded=!d.onlineMatch&&d.seatMenu;this.card(27,y,321,d.onlineMatch?187:expanded?420:345,'rgba(255,247,231,.78)','#e6c58d');if(d.onlineMatch){this.text('正在匹配棋友',187.5,y+33,22,'#74512d','center',true);this.text('已等待 '+Math.max(0,d.matchSeconds||0)+' 秒',187.5,y+61,14,'#a47745','center');this.button('取消匹配',54,y+90,267,48,()=>c.cancelWait(),true);}else{this.text('等待棋友入座',187.5,y+33,22,'#74512d','center',true);this.button('邀请微信好友',54,y+66,267,48,()=>this.runtime.share(),true);this.button('面对面模式',54,y+124,267,48,()=>c.startHotseat(),true);this.button('取消等待',54,y+182,267,48,()=>c.cancelWait(),true);const labels={red:'红方',black:'黑方',rotate:'轮换'},label=labels[d.seatPreference]||'轮换';this.button('对局设置',54,y+240,267,48,()=>c.toggleSeatMenu(),true);if(!d.seatMenu){this.text('我方：',112,y+302,13,'#8a6b4a','right');if(label==='轮换'){this.text('轮',132,y+302,13,'#c52d21','left',true);this.text('换',145,y+302,13,'#252525','left',true);}else this.text(label,132,y+302,13,label==='红方'?'#c52d21':'#252525','left',true);}if(d.seatMenu){[['red','红方'],['black','黑方'],['rotate','轮换']].forEach(([value,text],i)=>{const oy=y+289+i*36;if(value==='rotate'){this.text('轮',178,oy+17,16,'#c52d21','center',true);this.text('换',196,oy+17,16,'#252525','center',true);}else this.text(text,187.5,oy+17,16,value==='red'?'#c52d21':'#252525','center',true);this.targets.push({x:54,y:oy,w:267,h:36,action:()=>c.setSeatPreference(value)});});}}}
   if(d.showStickers)this.stickerSheet(c);
   if(d.showResult)this.result(c);if(d.manualPaused){this.overlay();const y=Math.max(this.top+60,(this.height-180)/2);this.card(35,y,305,180,'rgba(255,247,231,0.72)','#e6c58d');this.text('对局已暂停',187.5,y+39,22,'#74512d','center',true);this.text(d.mode==='local'?'计时已暂停':'计时与 AI 均已暂停',187.5,y+76,13,'#927650','center');this.button('继续对局',64,y+110,247,46,()=>c.togglePause(),true);}
@@ -104,7 +193,18 @@ class Renderer {
 
  overlay(fill='#2f241ca0'){this.ctx.fillStyle=fill;this.ctx.fillRect(0,0,375,this.height);this.targets=[];}
  result(c){const d=c.data,y=Math.max(this.top+75,(this.height-310)/2);this.overlay('#2f241c55');this.card(27,y,321,302,'rgba(255,247,231,0.76)');this.text(d.unlucky?'卧底现身 · 反将自身':'本局结束',187.5,y+35,13,'#9b8059','center');this.text(d.resultTitle,187.5,y+87,31,'#9a642a','center',true);this.text(d.resultDetail,187.5,y+135,19,'#5e4933','center');this.button('再来一局',52,y+170,271,49,()=>c.restart(),true);this.button('查看棋局',52,y+226,128,44,()=>c.closeResult());this.button('返回首页',194,y+226,128,44,()=>this.runtime.home());}
- stickerSheet(c){this.overlay();const y=Math.max(this.top+20,this.height-this.bottom-325);this.card(8,y,359,325);this.button('收起表情',245,y+10,111,36,()=>c.toggleStickers());c.data.stickers.forEach((s,i)=>{const x=17+(i%4)*88,yy=y+61+Math.floor(i/4)*124;this.image(s.image,x,yy,78,85);this.text(Array.from(s.text).slice(0,6).join(''),x+39,yy+96,10,'#725634','center');this.targets.push({x,y:yy,w:82,h:112,action:()=>c.sendSticker({currentTarget:{dataset:{id:s.id}}})});});}
+ stickerSheet(c) {
+  this.overlay();
+  const y = Math.max(this.top + 20, this.height - this.bottom - 325);
+  this.card(8, y, 359, 325);
+  this.button('收起表情', 245, y + 10, 111, 36, () => c.toggleStickers());
+  c.data.stickers.forEach((sticker, index) => {
+   const x = 17 + (index % 4) * 88, top = y + 61 + Math.floor(index / 4) * 124;
+   this.drawSticker(sticker.image, x, top, 82);
+   this.text(Array.from(sticker.text).slice(0, 6).join(''), x + 41, top + 96, 10, '#725634', 'center');
+   this.targets.push({ x, y: top, w: 82, h: 112, action: () => c.sendSticker({ currentTarget: { dataset: { id: sticker.id } } }) });
+  });
+ }
 }
 require('./ui-process').install(Renderer);
 require('./ui-v2').install(Renderer);
