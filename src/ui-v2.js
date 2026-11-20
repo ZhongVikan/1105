@@ -71,7 +71,7 @@ function install(Renderer){const p=Renderer.prototype;
  };
  p.player=function(side,name,avatar,y,captured,data,now,capturePlacement='below'){const active=data.turn===side&&!data.ended&&!data.waiting,rotateBar=this.beginPlayerPerspective(data,side,y);
  if(!this.v2Frame('v2_player_bar_'+side,16,y,343,48)){this.endPlayerPerspective(rotateBar);return old.player.call(this,side,name,avatar,y,captured,data,now,capturePlacement);}
- const c=this.ctx;c.save();c.beginPath();c.arc(41,y+24,17,0,Math.PI*2);c.clip();const loaded=this.image(avatar,24,y+7,34,34);c.restore();
+ const c=this.ctx,loaded=this.drawAvatar(avatar,41,y+24,20);
  if(!loaded&&!this.v2Art('v2_avatar_fallback_'+side,22,y+5,38,38))this.disc(41,y+23,16,side==='red'?'帥':'將',side);
  if(active){c.save();c.beginPath();c.arc(41,y+24,21,0,Math.PI*2);c.strokeStyle=side==='red'?'#b71e16':'#302720';c.lineWidth=1.5;c.stroke();c.restore();}
  const chars=Array.from((name||'').replace(/\s*·\s*/g,'·')),limit=active?5:13,short=chars.slice(0,limit).join('')+(chars.length>limit?'…':'');this.text(short,68,y+17,12,side==='red'?'#ac231a':'#191919');this.text(active?(data.paused?'计时暂停':'当前行棋'):'等待对方',68,y+34,11,'#9c8567');
@@ -116,7 +116,7 @@ function install(Renderer){const p=Renderer.prototype;
  if(inference){[['撤回一步','undoInference'],['重置推理','resetInference'],['退出推理','exitInference']].forEach(([label,fn],idx)=>this.button(label,16+idx*114,by,105,46,()=>c[fn]()));}
  else [['悔棋','undo'],['翻转','flip'],['重开','restart'],['更多','more']].forEach(([label,fn],i)=>this.button(label,16+i*88,by,79,46,()=>c[fn]()));
  if(!inference&&d.matchFound){const age=Math.max(0,now-(d.matchFoundAt||now)),p=Math.min(1,age/900),alpha=p<.22?p/.22:1-(p-.22)/.78,scale=.92+.08*Math.min(1,p/.28);this.ctx.save();this.ctx.globalAlpha=Math.max(0,alpha);this.ctx.translate(187.5,Math.min(this.height/2,b.y+b.h*.52));this.ctx.scale(scale,scale);this.card(-112,-34,224,68,'rgba(255,248,225,.94)','#d49b3e');this.text('匹配成功',0,0,25,'#9b5d1c','center',true);this.ctx.restore();}
- if(!inference&&d.stickerImage)this.image(d.stickerImage,102,b.y+b.h*.25,171,171);
+ if(!inference&&d.stickerImage)this.drawSticker(d.stickerImage,102,b.y+b.h*.25,171);
  if(d.waiting){const y=this.top+145;this.overlay();const expanded=!d.onlineMatch&&d.seatMenu;if(d.onlineMatch){this.card(27,y,321,187,'rgba(255,247,231,.78)','#e6c58d');this.text('正在匹配棋友',187.5,y+33,22,'#74512d','center',true);this.text('已等待 '+Math.max(0,d.matchSeconds||0)+' 秒',187.5,y+61,14,'#a47745','center');this.button('取消匹配',54,y+90,267,48,()=>c.cancelWait(),true);}else{this.card(27,y,321,expanded?420:345,'rgba(255,247,231,.78)','#e6c58d');this.text('等待棋友入座',187.5,y+33,22,'#74512d','center',true);this.button('邀请微信好友',54,y+66,267,48,()=>this.runtime.share(),true);this.button('面对面模式',54,y+124,267,48,()=>c.startHotseat(),true);this.button('取消等待',54,y+182,267,48,()=>c.cancelWait(),true);const labels={red:'红方',black:'黑方',rotate:'轮换'},label=labels[d.seatPreference]||'轮换';this.button('对局设置',54,y+240,267,48,()=>c.toggleSeatMenu(),true);if(!d.seatMenu){this.text('我方：',112,y+302,13,'#8a6b4a','right');if(label==='轮换'){this.text('轮',132,y+302,13,'#c52d21','left',true);this.text('换',145,y+302,13,'#252525','left',true);}else this.text(label,132,y+302,13,label==='红方'?'#c52d21':'#252525','left',true);}if(d.seatMenu){[['red','红方'],['black','黑方'],['rotate','轮换']].forEach(([value,text],i)=>{const oy=y+289+i*36;if(value==='rotate'){this.text('轮',178,oy+17,16,'#c52d21','center',true);this.text('换',196,oy+17,16,'#252525','center',true);}else this.text(text,187.5,oy+17,16,value==='red'?'#c52d21':'#252525','center',true);this.targets.push({x:54,y:oy,w:267,h:36,action:()=>c.setSeatPreference(value)});});}}}
  if(d.inference&&d.inferenceAssumptionMenu)this.inferenceAssumptionSheet(c);
  if(d.showStickers&&!inference)this.stickerSheet(c);
@@ -164,12 +164,12 @@ function install(Renderer){const p=Renderer.prototype;
  const red=side==='red',sy=red?1257:198,active=data.turn===side&&!data.ended&&!data.waiting,rotateBar=this.beginPlayerPerspective(data,side,y);
  const box=[44,sy,774,105];
  if(!this.battleArt(box,16,y,343,48,42,[red?320:500,sy+12,114,81,12,red?651:610,250])){this.endPlayerPerspective(rotateBar);return previousBattlePlayer.call(this,side,name,avatar,y,captured,data,now,capturePlacement);}
- // The source portrait is retained unless an actual player avatar is available.
- // The red and black portraits have different centers in the source artwork.
- // Apply battleArt's fit and centering to both the clipping circle and image.
- const portrait=red?{x:105.5,y:1307}:{x:108.5,y:248.5},k=Math.min(343/box[2],48/box[3]);
- const cx=16+(343-box[2]*k)/2+(portrait.x-box[0])*k,cy=y+(48-box[3]*k)/2+(portrait.y-box[1])*k,r=36*k;
- const c=this.ctx;c.save();c.beginPath();c.arc(cx,cy,r,0,Math.PI*2);c.clip();this.image(avatar,cx-r,cy-r,r*2,r*2);c.restore();
+ // Match each reference portrait center and cover its outer rim.
+ const portrait = red ? { x: 105.5, y: 1307 } : { x: 108.5, y: 248.5 };
+ const scale = Math.min(343 / box[2], 48 / box[3]);
+ const cx = 16 + (343 - box[2] * scale) / 2 + (portrait.x - box[0]) * scale;
+ const cy = y + (48 - box[3] * scale) / 2 + (portrait.y - box[1]) * scale;
+ this.drawAvatar(avatar, cx, cy, 50 * scale);
  const chars=Array.from((name||'').replace(/\s*·\s*/g,'·')),limit=active?5:13,short=chars.slice(0,limit).join('')+(chars.length>limit?'…':'');this.text(short,74,y+17,12.5,red?'#a52612':'#30302d','left',true);
  this.text(active?(data.paused?'计时暂停':'当前行棋'):'等待对方',74,y+34,11.5,'#a58c70','left',true);
  if(active){this.battleArt([590,1273,214,71],140.5,y+8,94,32,30,[665,1280,77,54,7,120]);this.ctx.save();this.ctx.shadowColor='#fff5ae';this.ctx.shadowOffsetY=0.6;this.text(data.seconds+'秒',226.5,y+25,19.5,'#c1200a','right',true);this.ctx.restore();}

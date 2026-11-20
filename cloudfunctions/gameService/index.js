@@ -3,10 +3,39 @@ const db=cloud.database(),G=require('./shared/game-engine'),S=require('./service
 const uidKey=id=>crypto.createHash('sha256').update(id).digest('hex');
 const profile=p=>({uid:p.uid,nickname:p.nickname,avatar:p.avatar});
 async function optional(ref){try{const data=(await ref.get()).data;if(data)delete data._id;return data;}catch(e){if(/not exist|not found|不存在/i.test(e.message))return null;throw e;}}
+function avatarFormat(bytes) {
+ if (!Buffer.isBuffer(bytes) || bytes.length < 12 || bytes.length > 384 * 1024) return '';
+ if (bytes.toString('hex', 0, 8) === '89504e470d0a1a0a') return 'png';
+ if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'jpg';
+ const header = bytes.toString('ascii', 0, 12);
+ if (header.startsWith('RIFF') && header.slice(8) === 'WEBP') return 'webp';
+ if (header.startsWith('GIF87a') || header.startsWith('GIF89a')) return 'gif';
+ return '';
+}
+
+async function roomAvatar(rooms, uid, env, roomId, fileID) {
+ if (typeof roomId !== 'string' || !/^[a-f0-9]{32}$/.test(roomId)) throw Error('房间链接无效');
+ const room = await optional(rooms.doc(roomId));
+ if (!room || !S.sideOf(room, uid)) throw Error('你不在这个房间');
+
+ // Accept only an avatar from this room, in the upload directory of this environment.
+ const source = typeof fileID === 'string' && /^cloud:\/\/([\w.-]+)\/avatars\/[\w.-]+$/.exec(fileID);
+ if (!source || (env && source[1] !== env && !source[1].startsWith(env + '.')) ||
+     ![room.red, room.black].some(player => player && player.avatar === fileID)) {
+  throw Error('头像不属于当前对局');
+ }
+ const { fileContent } = await cloud.downloadFile({ fileID });
+ const format = avatarFormat(fileContent);
+ if (!format) throw Error('头像格式不受支持');
+ return { ok: true, format, base64: fileContent.toString('base64') };
+}
+
 exports.main=async event=>{
  try{
  const variant=event.variant||'dark';if(['create','match'].includes(event.action)&&!['dark','classic','jieqi','fusion'].includes(variant))throw Error('未知玩法');
- const uid=cloud.getWXContext().OPENID;if(!uid)throw Error('请在微信中登录');const key=uidKey(uid),users=db.collection('chess_users'),rooms=db.collection('chess_rooms');
+ const {OPENID:uid,ENV:env}=cloud.getWXContext();if(!uid)throw Error('请在微信中登录');const rooms=db.collection('chess_rooms');
+ if(event.action==='roomAvatar')return await roomAvatar(rooms,uid,env,event.roomId,event.fileID);
+ const key=uidKey(uid),users=db.collection('chess_users');
  // Polls are by far the hottest online path.  A paired room that is still
  // inside its current deadline has no state to mutate, so avoid opening a
  // transaction (and the extra user read) just to return the same snapshot.

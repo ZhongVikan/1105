@@ -4,7 +4,7 @@ const STICKERS=new Set(require('./shared/stickers').map(s=>s.id));
 const requestLabel=(kind,state)=>kind==='restart'?(state.status==='ended'?'再来一局':'重开'):kind==='undo'?'悔棋':'合棋';
 function requestResult(room,pending,outcome){room.requestResult={kind:pending.kind,by:pending.by,label:pending.label||requestLabel(pending.kind,room.state),outcome,seq:(room.requestResult?room.requestResult.seq:0)+1};room.event=pending.kind+'-'+outcome;}
 function assert(v,m){if(!v)throw Error(m);}
-function sideOf(room,uid){return room.red.uid===uid?'red':room.black&&room.black.uid===uid?'black':null;}
+function sideOf(room,uid){return room.red&&room.red.uid===uid?'red':room.black&&room.black.uid===uid?'black':null;}
 function expire(room,now){
  // Release any legacy menu pause. Opening a menu no longer grants time.
  if(room.menuPause){room.deadline-=Math.max(0,room.menuPause.until-now);if(room.holdUntil===room.menuPause.until)room.holdUntil=now;room.menuPause=null;room.rev++;}
