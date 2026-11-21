@@ -31,14 +31,7 @@ class Runtime {
   if(wx.onWindowResize)wx.onWindowResize(()=>{this.renderer.resize();if(this.scene==='profile'&&this.authButton)this.makeAuthButton();});
   if(wx.showShareMenu)wx.showShareMenu({withShareTicket:true,menus:['shareAppMessage']});
   if(wx.onShareAppMessage)wx.onShareAppMessage(()=>this.shareInfo());
-  // Hold the first frame until the new UI subpackages and their images are
-  // ready. Otherwise the legacy canvas fallback can flash briefly before the
-  // reference UI finishes decoding.
-  if(typeof wx.loadSubpackage==='function'){
-   this.renderer._uiBooting=true;this.renderer.draw();
-   let ready;try{ready=this.renderer.preloadGameAssets?this.renderer.preloadGameAssets():Promise.resolve(true);}catch(e){ready=Promise.resolve(false);}
-   Promise.resolve(ready).catch(()=>false).finally(()=>{if(this.renderer){this.renderer._uiBooting=false;this.renderer.invalidate();this.renderer.resume();}});
-  }else this.renderer.resume();
+  this.renderer.resume();
   this.invite(wx.getLaunchOptionsSync?wx.getLaunchOptionsSync().query:null);
  }
  toast(title){wx.showToast({title,icon:'none'});}
@@ -63,21 +56,25 @@ class Runtime {
   this.destroyAuthButton();this.returnScene=this.controller?'game':'home';this.scene=scene;this.scroll=0;this.invalidate();
   // Privacy permission is requested only by the visible profile button tap.
  }
- back(){this.destroyAuthButton();this.scene=this.controller?'game':'home';this.audio.refresh();this.invalidate();}
- home(){this.destroyAuthButton();if(this.controller){this.controller.onUnload();this.controller=null;}this.scene='home';this.audio.refresh();this.invalidate();}
+ back(){this._pendingGame=null;this.destroyAuthButton();this.scene=this.controller?'game':'home';this.audio.refresh();this.invalidate();}
+ home(){this._pendingGame=null;this._startingGame=null;this.destroyAuthButton();if(this.controller){this.controller.onUnload();this.controller=null;}this.scene='home';this.audio.refresh();this.invalidate();}
  async startGame(options){
   options={variant:this.variant||'dark',...options};
   if(options.mode==='online'&&!config.cloudEnv){this.toast('真人对战还需配置云开发环境');return;}
-  if(options.mode==='online'&&!this.profile){this.open('profile');return;}
-  this.destroyAuthButton();if(this.controller)this.controller.onUnload();
-  // Never enter the game scene until board/piece assets are decoded and reusable.
-  // preloadGameAssets is cached, so after the first warm-up this resolves immediately.
-  try{if(this.renderer.preloadGameAssets)await this.renderer.preloadGameAssets();}catch(e){this.toast('游戏资源加载失败，请重试');return false;}
-  const c={...definition,data:JSON.parse(JSON.stringify(definition.data)),runtime:this};
-  c.setData=patch=>{if(patch.showResult&&!c.data.showResult)c._resultShownAt=Date.now();const changed=Object.keys(patch).some(k=>c.data[k]!==patch[k]);Object.assign(c.data,patch);if(changed&&this.controller===c)this.invalidate();};
-  this.controller=c;this.scene='game';this.invalidate();
-  try{await c.onLoad(options);}catch(e){if(this.controller===c){this.home();this.toast('游戏启动失败：'+e.message);}return false;}
-  return this.controller===c&&(!(options&&options.mode==='online')||!!c._room);
+  if(options.mode==='online'&&!this.profile){this._pendingGame=options;this.open('profile');return false;}
+  if(this._startingGame)return false;
+  const start={};this._startingGame=start;
+  try{
+   try{if(this.renderer.preloadGameAssets&&(await this.renderer.preloadGameAssets(options.variant))===false)throw Error('棋盘资源加载失败');}
+   catch(e){this.toast('游戏资源加载失败，请重试');return false;}
+   if(this._startingGame!==start)return false;
+   this.destroyAuthButton();if(this.controller)this.controller.onUnload();
+   const c={...definition,data:JSON.parse(JSON.stringify(definition.data)),runtime:this};
+   c.setData=patch=>{if(patch.showResult&&!c.data.showResult)c._resultShownAt=Date.now();const changed=Object.keys(patch).some(k=>c.data[k]!==patch[k]);Object.assign(c.data,patch);if(changed&&this.controller===c)this.invalidate();};
+   this.controller=c;this.scene='game';this.invalidate();
+   try{await c.onLoad(options);}catch(e){if(this.controller===c){this.home();this.toast('游戏启动失败：'+(e.message||e.errMsg||'请重试'));}return false;}
+   return this.controller===c&&(options.mode!=='online'||!!c._room);
+  }finally{if(this._startingGame===start)this._startingGame=null;}
  }
  toggleSetting(key){const s=S.settings();s[key]=!s[key];S.setSettings(s);this.audio.refresh();this.invalidate();}
  shareInfo(){return this.controller&&(this.controller.data.roomId||(this.controller._room&&this.controller._room.roomId))?this.controller.onShareAppMessage():{title:'暗棋大乱斗 · 真假难辨，步步为营',query:''};}
@@ -139,7 +136,12 @@ class Runtime {
    stage='云函数保存玩家资料';
    await Online.call('profile',{nickname:info.nickName,avatar:uploaded.fileID});
    this.profile={nickname:info.nickName,avatar:uploaded.fileID};wx.setStorageSync('chess-profile',this.profile);
-   if(this.scene==='profile'){this.back();if(this.pendingRoom)this.enterInvite();}
+   if(this.scene==='profile'){
+    const pendingGame=this._pendingGame;
+    this.back();
+    if(this.pendingRoom)this.enterInvite();
+    else if(pendingGame)await this.startGame(pendingGame);
+   }
   }catch(e){this.profileError(stage,e);}finally{this.loginBusy=false;this.invalidate();}
  }
  position(t){return {x:(t.clientX-(this.renderer.offsetX||0))/this.renderer.scale,y:t.clientY/this.renderer.scale};}
@@ -148,8 +150,8 @@ class Runtime {
   if(this.scene==='rules'){this.scroll=Math.max(0,Math.min(this.renderer.maxScroll||0,this.scroll+this.touch.lastY-p.y));this.invalidate();}this.touch.lastY=p.y;
  }
  touchEnd(e){const start=this.touch;this.touch=null;const t=e.changedTouches&&e.changedTouches[0];if(!start||!t||start.moved||start.scene!==this.scene)return;const p=this.position(t);if(Math.hypot(p.x-start.x,p.y-start.y)>10)return;
-  const targetState=this.renderer._targetState,controller=this.controller,targetStateFresh=!targetState||targetState.scene===this.scene&&(!controller||targetState.waiting===!!controller.data.waiting);const action=targetStateFresh&&this.renderer.targets.slice().reverse().find(r=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h);if(action){this.audio.effect('click');action.action();return;}
-  const c=controller;if(this.scene!=='game'||!c||c.data.showResult||c.data.showStickers||c.data.waiting)return;
+  const targetState=this.renderer._targetState,controller=this.controller,targetStateFresh=!targetState||targetState.scene===this.scene&&(!controller||targetState.waiting===!!(controller.data.waiting||controller.data.starting));const action=targetStateFresh&&this.renderer.targets.slice().reverse().find(r=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h);if(action){this.audio.effect('click');action.action();return;}
+  const c=controller;if(this.scene!=='game'||!c||c.data.showResult||c.data.showStickers||c.data.waiting||c.data.starting)return;
   const rect=this.renderer.boardRect,point=this.renderer.boardHit(p.x,p.y,rect,c.data.flipped);if(!point){c.cancelSelection();return;}
   const visiblePieces=c.data.inference?c.data.inferencePieces:c.data.pieces;const piece=visiblePieces.find(v=>v.x===point.x&&v.y===point.y);c.onPoint({detail:{point,pieceId:piece?piece.id:null}});
  }

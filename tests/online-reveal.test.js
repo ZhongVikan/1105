@@ -53,3 +53,33 @@ test('an older in-flight poll cannot replace the preview or release the command 
  assert.equal(c.data.pieces.find(p=>p.id===move.id).y,5);
  resolve(response());await request;assert.equal(c.motion,motion);assert.equal(c.data.busy,false);
 });
+
+test('a committed reveal with a lost response is confirmed by polling without replay',async t=>{
+ const {c,move,response}=setup(t);
+ let drop;
+ t.mock.method(Online,'call',action=>action==='move'?new Promise((_,reject)=>{drop=reject;}):Promise.resolve(response()));
+ const command=c.command('move',move);
+ t.mock.timers.tick(3000);
+ assert.equal(FX.frame(c,Date.now()),null);
+ drop(Error('lost response'));await command;
+ assert.equal(c.data.ply,1);assert.equal(c.data.busy,false);
+ assert.equal(c._battle.serial,1);assert.equal(c.motion,null);
+ assert.equal(c.data.pieces.find(p=>p.id===move.id).hidden,false);
+ assert.equal(c.lastToast,undefined);
+});
+
+test('uncertain move keeps the preview until a successful poll can decide whether to roll back',async t=>{
+ const {c,move}=setup(t);
+ const original=copy(c._room);
+ let disconnected=true;
+ t.mock.method(Online,'call',async action=>{
+  if(action==='move'||disconnected)throw Error('offline');
+  return original;
+ });
+ await c.command('move',move);
+ assert.equal(c.data.ply,1);assert.equal(c.data.busy,true);
+ disconnected=false;
+ t.mock.timers.tick(1500);await c.poll();
+ assert.equal(c.data.ply,0);assert.equal(c.data.busy,false);
+ assert.match(c.lastToast,/未能确认落子/);
+});

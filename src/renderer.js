@@ -17,8 +17,8 @@ class Renderer {
  loop(){if(!this.running)return;const time=Date.now(),c=this.runtime.controller;let animate=false;
   if(c&&this.runtime.scene==='game'){
    const revision=c._battle&&c._battle.revision;FX.frame(c,time);if(c._battle&&revision!==c._battle.revision)this.dirty=true;
-   const warning=c.data.seconds<=10&&!c.data.ended&&!c.data.waiting&&!c.data.paused&&!c._hidden;
-   animate=!c.data.manualPaused&&!c._hidden&&((c._battle&&(c._battle.animating?c._battle.animating(time):c._battle.active()))||warning||(c.data.showResult&&time-c._resultShownAt<340)||c.data.matchFound);
+   const warning=c.data.seconds<=10&&!c.data.ended&&!c.data.waiting&&!c.data.starting&&!c.data.paused&&!c._hidden;
+   animate=!c.data.manualPaused&&!c._hidden&&((c._battle&&(c._battle.animating?c._battle.animating(time):c._battle.active()))||warning||(c.data.showResult&&time-c._resultShownAt<340)||(c.data.matchFound&&time-c.data.matchFoundAt<900));
    if(!c._battle&&c.motion){const end=c.motion.at+FX.timing(c.motion.move).total;if(time<end)animate=true;else if(this.lastDraw<end)this.dirty=true;}
   }
   const authLoading=this.runtime.scene==='profile'&&(this.runtime.loginBusy||this.runtime._privacyBusy);
@@ -135,7 +135,7 @@ class Renderer {
  beginPlayerPerspective(data,side,y){const rotate=!!(data&&data.mode==='local'&&side==='black');if(rotate){this.ctx.save();this.ctx.translate(187.5,y+24);this.ctx.rotate(Math.PI);this.ctx.translate(-187.5,-(y+24));}return rotate;}
  endPlayerPerspective(rotate){if(rotate)this.ctx.restore();}
  header(title,back=true){this.text(title,187.5,this.top+6,18,'#3c332a','center',true);if(back)this.button('返回',16,this.top-16,56,36,()=>this.runtime.back());}
- draw(now=Date.now()){const c=this.ctx;const controller=this.runtime.controller;this._targetState={scene:this.runtime.scene,waiting:!!(controller&&controller.data&&controller.data.waiting)};c.setTransform(this.dpr*this.scale,0,0,this.dpr*this.scale,0,0);c.clearRect(0,0,375,this.height);c.fillStyle='#faf6ef';c.fillRect(0,0,375,this.height);this.targets=[];
+ draw(now=Date.now()){const c=this.ctx;const controller=this.runtime.controller;this._targetState={scene:this.runtime.scene,waiting:!!(controller&&controller.data&&(controller.data.waiting||controller.data.starting))};c.setTransform(this.dpr*this.scale,0,0,this.dpr*this.scale,0,0);c.clearRect(0,0,375,this.height);c.fillStyle='#faf6ef';c.fillRect(0,0,375,this.height);this.targets=[];
   const scene=this.runtime.scene;if(scene==='home')this.home();else if(scene==='difficulty')this.difficulty();else if(scene==='settings')this.settings();else if(scene==='rules')this.ruleScene();else if(scene==='profile')this.profileScene();else if(scene==='game')this.game(now);
  }
  home(){const t=this.top,h=this.height,compact=h-this.bottom-t<570;this.text('智谋无声 · 棋局制胜',187.5,t+26,13,'#9b8369','center');this.text('暗棋大乱斗',187.5,t+72,compact?31:35,'#352a21','center',true);
@@ -162,6 +162,7 @@ class Renderer {
   if(!d.waiting&&!d.ended)this.button('表情',301,bottom+100+this.trayExtra,58,28,()=>c.toggleStickers());
   if(d.stickerImage)this.drawSticker(d.stickerImage,102,b.y+b.h*.25,171,0.5);
   if(d.waiting){const y=this.top+145;this.overlay();const expanded=!d.onlineMatch&&d.seatMenu;this.card(27,y,321,d.onlineMatch?187:expanded?420:345,'rgba(255,247,231,.78)','#e6c58d');if(d.onlineMatch){this.text('正在匹配棋友',187.5,y+33,22,'#74512d','center',true);this.text('已等待 '+Math.max(0,d.matchSeconds||0)+' 秒',187.5,y+61,14,'#a47745','center');this.button('取消匹配',54,y+90,267,48,()=>c.cancelWait(),true);}else{this.text('等待棋友入座',187.5,y+33,22,'#74512d','center',true);this.button('邀请微信好友',54,y+66,267,48,()=>this.runtime.share(),true);this.button('面对面模式',54,y+124,267,48,()=>c.startHotseat(),true);this.button('取消等待',54,y+182,267,48,()=>c.cancelWait(),true);const labels={red:'红方',black:'黑方',rotate:'轮换'},label=labels[d.seatPreference]||'轮换';this.button('对局设置',54,y+240,267,48,()=>c.toggleSeatMenu(),true);if(!d.seatMenu){this.text('我方：',112,y+302,13,'#8a6b4a','right');if(label==='轮换'){this.text('轮',132,y+302,13,'#c52d21','left',true);this.text('换',145,y+302,13,'#252525','left',true);}else this.text(label,132,y+302,13,label==='红方'?'#c52d21':'#252525','left',true);}if(d.seatMenu){[['red','红方'],['black','黑方'],['rotate','轮换']].forEach(([value,text],i)=>{const oy=y+289+i*36;if(value==='rotate'){this.text('轮',178,oy+17,16,'#c52d21','center',true);this.text('换',196,oy+17,16,'#252525','center',true);}else this.text(text,187.5,oy+17,16,value==='red'?'#c52d21':'#252525','center',true);this.targets.push({x:54,y:oy,w:267,h:36,action:()=>c.setSeatPreference(value)});});}}}
+  if(d.starting)this.startingRoom();
   if(d.showStickers)this.stickerSheet(c);
   if(d.showResult)this.result(c);if(d.manualPaused){this.overlay();const y=Math.max(this.top+60,(this.height-180)/2);this.card(35,y,305,180,'rgba(255,247,231,0.72)','#e6c58d');this.text('对局已暂停',187.5,y+39,22,'#74512d','center',true);this.text(d.mode==='local'?'计时已暂停':'计时与 AI 均已暂停',187.5,y+76,13,'#927650','center');this.button('继续对局',64,y+110,247,46,()=>c.togglePause(),true);}
  }
@@ -193,7 +194,13 @@ class Renderer {
   for(const l of C.lines()){ctx.beginPath();ctx.moveTo(l.x1,l.y1);ctx.lineTo(l.x2,l.y2);ctx.strokeStyle='#9b713d';ctx.lineWidth=1.4;ctx.stroke();}this.text('楚 河',210,400,26,'#9c7443','center');this.text('漢 界',510,400,26,'#9c7443','center');}
 
  overlay(fill='#2f241ca0'){this.ctx.fillStyle=fill;this.ctx.fillRect(0,0,375,this.height);this.targets=[];}
- result(c){const d=c.data,y=Math.max(this.top+75,(this.height-310)/2);this.overlay('#2f241c55');this.card(27,y,321,302,'rgba(255,247,231,0.76)');this.text(d.unlucky?'卧底现身 · 反将自身':'本局结束',187.5,y+35,13,'#9b8059','center');this.text(d.resultTitle,187.5,y+87,31,'#9a642a','center',true);this.text(d.resultDetail,187.5,y+135,19,'#5e4933','center');this.button('再来一局',52,y+170,271,49,()=>c.restart(),true);this.button('查看棋局',52,y+226,128,44,()=>c.closeResult());this.button('返回首页',194,y+226,128,44,()=>this.runtime.home());}
+ startingRoom(){
+  const y=this.top+145;
+  this.overlay();this.card(27,y,321,112,'rgba(255,247,231,.88)','#e6c58d');
+  this.text('双方已入座',187.5,y+37,22,'#74512d','center',true);
+  this.text('双方就绪后开始计时',187.5,y+73,14,'#927650','center');
+ }
+ result(c){const d=c.data,y=Math.max(this.top+75,(this.height-310)/2);this.overlay('#2f241c55');this.card(27,y,321,302,'rgba(255,247,231,0.76)');this.text(d.unlucky?'卧底现身 · 反将自身':'本局结束',187.5,y+35,13,'#9b8059','center');this.text(d.resultTitle,187.5,y+87,31,'#9a642a','center',true);this.text(d.resultDetail,187.5,y+135,19,'#5e4933','center');this.button(d.mode==='online'&&d.canRematch===false?'重新匹配':'再来一局',52,y+170,271,49,()=>c.restart(),true);this.button('查看棋局',52,y+226,128,44,()=>c.closeResult());this.button('返回首页',194,y+226,128,44,()=>this.runtime.home());}
  stickerSheet(c) {
   this.overlay();
   const y = Math.max(this.top + 20, this.height - this.bottom - 325);

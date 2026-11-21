@@ -5,3 +5,26 @@ test('privacy refusal stops all profile requests and native button creation',asy
 test('first-time profile permission uses a native button after privacy consent',async()=>{const calls=[];global.wx={requirePrivacyAuthorize:o=>{calls.push('privacy');o.success();},getSetting:o=>o.success({authSetting:{}}),getUserInfo:()=>a.fail('not authorized')};const r=runtime();r.makeAuthButton=()=>calls.push('native');await r.prepareProfile();a.deepEqual(calls,['privacy','native']);delete global.wx;});
 test('SDK versions below 2.32.3 cannot start the privacy/profile flow',async()=>{const P=require('../utils/privacy-support');a.equal(P.atLeast('2.32.2'),false);a.equal(P.atLeast('2.32.3'),true);a.equal(P.atLeast('2.33.0'),true);global.wx={getAppBaseInfo:()=>({SDKVersion:'2.32.2'}),requirePrivacyAuthorize:()=>a.fail('unsupported')};const r=runtime();await r.prepareProfile();a.equal(r.error.stage,'基础库检查');delete global.wx;});
 test('entering the identity scene does not request privacy before its button is tapped',()=>{const r=runtime();r.destroyAuthButton=()=>{};r.prepareProfile=()=>a.fail('page entry must not prompt');r.open('profile');a.equal(r.scene,'profile');});
+
+for(const action of ['match','create'])test(`first-time authorization resumes ${action} in the selected variant`,async t=>{
+ const state=require('../utils/game-engine').newGame(undefined,'jieqi'),requests=[];
+ const r=Object.assign(runtime(),{scene:'home',variant:'jieqi',audio:{refresh(){},hide(){}},renderer:{preloadGameAssets:async()=>true}});
+ global.wx={
+  setStorageSync(){},
+  downloadFile:options=>options.success({statusCode:200,tempFilePath:'/avatar.png'}),
+  cloud:{
+   uploadFile:async()=>({fileID:'cloud://avatar'}),
+   callFunction:async({data})=>{
+    requests.push(data);
+    return {result:data.action==='profile'?{ok:true}:{ok:true,roomId:'r',state,side:'red',red:{nickname:'test'},black:null,waiting:true,rev:0}};
+   },
+  },
+ };
+ t.after(()=>{r.home();delete global.wx;});
+ await r.startGame({mode:'online',...(action==='match'?{match:'1'}:{})});
+ a.equal(r.scene,'profile');a.deepEqual(requests,[]);
+ await r.saveProfile({nickName:'test',avatarUrl:'https://example.invalid/avatar.png'});
+ a.equal(r.scene,'game');a.equal(r.controller.data.roomId,'r');
+ a.deepEqual(requests.map(request=>request.action),['profile',action]);
+ a.equal(requests[1].variant,'jieqi');
+});

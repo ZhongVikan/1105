@@ -4,7 +4,7 @@ const meta=require('./ui-v2-meta');
 const TYPES={'帥':'general','帅':'general','將':'general','将':'general','仕':'advisor','士':'advisor','相':'elephant','象':'elephant','車':'rook','车':'rook','俥':'rook','馬':'horse','马':'horse','傌':'horse','炮':'cannon','砲':'cannon','兵':'pawn','卒':'pawn'};
 const BUTTONS={'简易 · 菜就多练局':'002','普通 · 不服就干场':'003','困难 · 棋王修罗场':'004','暂停':'005','悔棋':'006','翻转':'007','重开':'008','更多':'009','表情':'010','查看隐私保护指引':'011','取消等待':'014','取消匹配':'014','收起表情':'015','查看棋局':'017','返回首页':'018'};
 function install(Renderer){const p=Renderer.prototype;
- const old={header:p.header,disc:p.disc,button:p.button,uiButton:p.uiButton,uiIcon:p.uiIcon,home:p.home,text:p.text,player:p.player,profileScene:p.profileScene,preload:p.preloadGameAssets};
+ const old={header:p.header,disc:p.disc,button:p.button,uiButton:p.uiButton,uiIcon:p.uiIcon,home:p.home,text:p.text,player:p.player,profileScene:p.profileScene};
  p.v2Art=function(key,x,y,w,h){const m=meta[key],im=this.uiImage(key);if(!im||!m)return false;this.ctx.drawImage(im,...m.box,x,y,w,h);return true;};
  // Reuse a text-free strip of the provided player panel as a stretchable fill.
  // Draw the frame independently so baked nicknames and timer digits never leak through.
@@ -115,9 +115,10 @@ function install(Renderer){const p=Renderer.prototype;
  const by=playerY+58;
  if(inference){[['撤回一步','undoInference'],['重置推理','resetInference'],['退出推理','exitInference']].forEach(([label,fn],idx)=>this.button(label,16+idx*114,by,105,46,()=>c[fn]()));}
  else [['悔棋','undo'],['翻转','flip'],['重开','restart'],['更多','more']].forEach(([label,fn],i)=>this.button(label,16+i*88,by,79,46,()=>c[fn]()));
- if(!inference&&d.matchFound){const age=Math.max(0,now-(d.matchFoundAt||now)),p=Math.min(1,age/900),alpha=p<.22?p/.22:1-(p-.22)/.78,scale=.92+.08*Math.min(1,p/.28);this.ctx.save();this.ctx.globalAlpha=Math.max(0,alpha);this.ctx.translate(187.5,Math.min(this.height/2,b.y+b.h*.52));this.ctx.scale(scale,scale);this.card(-112,-34,224,68,'rgba(255,248,225,.94)','#d49b3e');this.text('匹配成功',0,0,25,'#9b5d1c','center',true);this.ctx.restore();}
+ if(!inference&&d.matchFound&&now-d.matchFoundAt<900){const age=Math.max(0,now-d.matchFoundAt),p=age/900,alpha=p<.22?p/.22:1-(p-.22)/.78,scale=.92+.08*Math.min(1,p/.28);this.ctx.save();this.ctx.globalAlpha=Math.max(0,alpha);this.ctx.translate(187.5,Math.min(this.height/2,b.y+b.h*.52));this.ctx.scale(scale,scale);this.card(-112,-34,224,68,'rgba(255,248,225,.94)','#d49b3e');this.text('匹配成功',0,0,25,'#9b5d1c','center',true);this.ctx.restore();}
  if(!inference&&d.stickerImage)this.drawSticker(d.stickerImage,102,b.y+b.h*.25,171,0.5);
  if(d.waiting){const y=this.top+145;this.overlay();const expanded=!d.onlineMatch&&d.seatMenu;if(d.onlineMatch){this.card(27,y,321,187,'rgba(255,247,231,.78)','#e6c58d');this.text('正在匹配棋友',187.5,y+33,22,'#74512d','center',true);this.text('已等待 '+Math.max(0,d.matchSeconds||0)+' 秒',187.5,y+61,14,'#a47745','center');this.button('取消匹配',54,y+90,267,48,()=>c.cancelWait(),true);}else{this.card(27,y,321,expanded?420:345,'rgba(255,247,231,.78)','#e6c58d');this.text('等待棋友入座',187.5,y+33,22,'#74512d','center',true);this.button('邀请微信好友',54,y+66,267,48,()=>this.runtime.share(),true);this.button('面对面模式',54,y+124,267,48,()=>c.startHotseat(),true);this.button('取消等待',54,y+182,267,48,()=>c.cancelWait(),true);const labels={red:'红方',black:'黑方',rotate:'轮换'},label=labels[d.seatPreference]||'轮换';this.button('对局设置',54,y+240,267,48,()=>c.toggleSeatMenu(),true);if(!d.seatMenu){this.text('我方：',112,y+302,13,'#8a6b4a','right');if(label==='轮换'){this.text('轮',132,y+302,13,'#c52d21','left',true);this.text('换',145,y+302,13,'#252525','left',true);}else this.text(label,132,y+302,13,label==='红方'?'#c52d21':'#252525','left',true);}if(d.seatMenu){[['red','红方'],['black','黑方'],['rotate','轮换']].forEach(([value,text],i)=>{const oy=y+289+i*36;if(value==='rotate'){this.text('轮',178,oy+17,16,'#c52d21','center',true);this.text('换',196,oy+17,16,'#252525','center',true);}else this.text(text,187.5,oy+17,16,value==='red'?'#c52d21':'#252525','center',true);this.targets.push({x:54,y:oy,w:267,h:36,action:()=>c.setSeatPreference(value)});});}}}
+ if(d.starting)this.startingRoom();
  if(d.inference&&d.inferenceAssumptionMenu)this.inferenceAssumptionSheet(c);
  if(d.showStickers&&!inference)this.stickerSheet(c);
  if(d.showResult)this.result(c);if(!inference&&d.manualPaused){this.overlay();const y=Math.max(this.top+60,(this.height-180)/2);this.card(35,y,305,180,'rgba(255,247,231,0.72)','#e6c58d');this.text('对局已暂停',187.5,y+39,22,'#74512d','center',true);this.text(d.mode==='local'?'计时已暂停':'计时与 AI 均已暂停',187.5,y+76,13,'#927650','center');this.button('继续对局',64,y+110,247,46,()=>c.togglePause(),true);}
@@ -178,9 +179,19 @@ function install(Renderer){const p=Renderer.prototype;
  p.inferenceAssumptionSheet=function(controller){
  const opts=this.runtime.controller.data.inferenceAssumptionOptions||[],rows=Math.ceil(opts.length/2),h=86+rows*38+48,y=Math.max(this.top+18,(this.height-h)/2);this.overlay('rgba(47,36,28,.74)');this.card(27,y,321,h,'rgba(255,247,231,.78)','#e6c58d');this.text('选择假设身份',187.5,y+30,20,'#74512d','center',true);this.text('仅用于推理，不代表正式棋局已揭示',187.5,y+57,11,'#8f7354','center');opts.forEach((o,i)=>{const x=44+(i%2)*145,yy=y+78+Math.floor(i/2)*38;this.card(x,yy,133,32,'#fff1cf','#d3a05a');this.text(o.label,x+66.5,yy+16,14,o.side==='red'?'#c52d21':'#252525','center',true);this.targets.push({x,y:yy,w:133,h:32,action:()=>controller.chooseInferenceAssumption(o.side,o.kind)});});this.button('取消选择',135,y+h-48,105,46,()=>controller.cancelInferenceAssumption(),true);
  };
- p.preloadGameAssets=function(){if(this._v2Loading)return this._v2Loading;const a=require('./ui-assets'),keys=['extra_buttons','waiting_reference','waiting_button','inference_button','pause_button_blank','result_reference','game_reference','match_info_frame','board_base','capture_ring',...Object.keys(meta).filter(k=>((k.startsWith('v2_piece_')||k.startsWith('v2_fusion_'))&&!k.endsWith('_selected'))||k.startsWith('v2_player_bar_')||k.startsWith('v2_avatar_')||/^v2_button_00[5-9]$/.test(k)||k==='v2_button_010')];
- const pkgs=[...new Set(keys.map(k=>a[k].split('/')[0]))];this.uiPackages=this.uiPackages||{};
- this._v2Loading=Promise.all(pkgs.map(name=>new Promise(resolve=>{if(this.uiPackages[name]==='ready')return resolve(true);this.uiPackages[name]='loading';const done=ok=>{this.uiPackages[name]=ok?'ready':'failed';resolve(ok);};if(!wx.loadSubpackage)return done(true);try{wx.loadSubpackage({name,success:()=>done(true),fail:()=>done(false)});}catch(e){done(false);}}))).then(async results=>{const images=await Promise.all(keys.map(k=>{this.uiImage(k);const rec=this.images.get(a[k]);return rec&&(rec.image?true:rec.ready)||false;}));FX.preload(this);this.invalidate();return results.every(Boolean)&&images.every(Boolean);}).finally(()=>{this._v2Loading=null;});return this._v2Loading;
+ p.preloadGameAssets=async function(variant){
+  const assets=require('./ui-assets');
+  const keys=['board_base','v2_piece_hidden',...Object.keys(meta).filter(key=>
+   !key.endsWith('_selected')&&(/^v2_piece_(red|black)_/.test(key)||variant==='fusion'&&key.startsWith('v2_fusion_')))];
+  const packages=new Set(keys.map(key=>assets[key].split('/')[0]));
+  await Promise.all(Array.from(packages,name=>this.loadUiPackage(name)));
+  const images=await Promise.all(keys.map(key=>{
+   const previous=this.images.get(assets[key]);
+   if(previous&&previous.error)this.images.delete(assets[key]);
+   if(this.uiImage(key))return true;
+   const record=this.images.get(assets[key]);return record&&record.ready||false;
+  }));
+  FX.preload(this);return images.every(Boolean);
  };
 }
 module.exports={install};

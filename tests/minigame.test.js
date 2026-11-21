@@ -36,3 +36,31 @@ test('stationary pieces are cached across animation frames',()=>{mock();const R=
 
 test('captured tray preserves each captured piece allegiance',()=>{mock();const R=require('../src/renderer'),r=new R({}),seen=[];try{r.boardRect={w:343};r.disc=(x,y,radius,label,side)=>seen.push({label,side});r.captureTray([{text:'車',side:'red'},{text:'馬',side:'black'}],200);a.deepEqual(seen,[{label:'車',side:'red'},{label:'馬',side:'black'}]);}finally{delete global.wx;}});
 test('fusion timeout preserves last move highlight without replaying motion',async()=>{mock();const Runtime=require('../src/runtime'),app=new Runtime();app.variant='fusion';await app.startGame({mode:'ai'});try{const c=app.controller;c._state.lastMove={id:c._state.pieces[0].id,from:{x:0,y:0},to:{x:0,y:1},fusionType:'guard_king',revealed:true,capturedId:'old-capture'};c._state.ply=1;c.sync('fusion');a.ok(c.motion);c._clock.deadline=Date.now()-1;c.tick();a.equal(c._state.reason,'timeout');a.equal(c.motion,null);a.equal(c.data.movingId,'');a.equal(c.data.captureId,'');a.equal(c.data.revealId,'');a.equal(c.data.lastMoveId,c._state.lastMove.id);}finally{teardown(app);}});
+
+test('online entry is independent of stickers; receiving one loads its own package',async()=>{
+ mock();
+ const Runtime=require('../src/runtime'),G=require('../utils/game-engine'),app=new Runtime(),packages=[],actions=[];
+ const state=G.newGame(undefined,'classic');
+ let failSticker=true;
+ wx.loadSubpackage=options=>{
+  packages.push(options.name);
+  if(failSticker&&options.name==='stickersB')options.fail();
+  else options.success();
+ };
+ wx.cloud={callFunction:async({data})=>{
+  actions.push(data.action);
+  return {result:{ok:true,roomId:'r',rev:0,side:'red',state,waiting:true,red:{nickname:'R'},black:null}};
+ }};
+ app.profile={nickname:'R'};
+ try{
+  a.equal(await app.startGame({mode:'online',variant:'classic',match:'1'}),true);
+  a.deepEqual(actions,['match']);a.ok(!packages.some(name=>name.startsWith('stickers')));
+  a.ok(!packages.includes('uiFusionPieces'));
+  const c=app.controller;
+  await c.showSticker('sticker-6');
+  a.equal(c.data.stickerImage,'');a.equal(app.scene,'game');
+  failSticker=false;await c.showSticker('sticker-6');
+  a.equal(c.data.stickerImage,'stickersB/sticker-6.png');
+  a.deepEqual(packages.filter(name=>name.startsWith('stickers')),['stickersB','stickersB']);
+ }finally{teardown(app);}
+});

@@ -6,30 +6,25 @@ const YS=[156,293.5,427.5,558.5,689.5,825,956.5,1090.5,1221.5,1360];
 const NAMES={'帥':'general','帅':'general','將':'general','将':'general','士':'advisor','仕':'advisor','象':'elephant','相':'elephant','車':'chariot','车':'chariot','俥':'chariot','馬':'horse','马':'horse','傌':'horse','炮':'cannon','砲':'cannon','兵':'soldier','卒':'soldier'};
 const NOTICE=['抵制不良游戏，拒绝盗版游戏。注意自我保护，谨防受骗上当。','适度游戏益脑，沉迷游戏伤身。合理安排时间，享受健康生活。','创作者Vikan'];
 function install(Renderer){const p=Renderer.prototype,oldDisc=p.disc;
- p.preloadGameAssets=function(){
-  if(this._gameAssetsReady)return Promise.resolve(true);
-  if(this._gameAssetsLoading)return this._gameAssetsLoading;
-  const keys=['board_base','capture_ring','black_advisor','black_cannon','black_chariot','black_elephant','black_general','black_horse','black_soldier','piece_back','red_advisor','red_cannon','red_chariot','red_elephant','red_general','red_horse','red_soldier'];
-  const pkgs=[...new Set(keys.map(k=>(assets[k]||'').split('/')[0]).filter(Boolean))];
+ p.loadUiPackage=function(name){
   this.uiPackages=this.uiPackages||{};
-  const loadPkg=name=>new Promise(resolve=>{
-   if(this.uiPackages[name]==='ready')return resolve(true);
-   this.uiPackages[name]='loading';
-   const done=ok=>{this.uiPackages[name]=ok?'ready':'failed';resolve(ok);};
-   if(!wx.loadSubpackage)return done(true);
-   try{wx.loadSubpackage({name,success:()=>done(true),fail:()=>done(false)});}catch(e){done(false);}
+  if(this.uiPackages[name]==='ready')return Promise.resolve(true);
+  const loads=this._uiPackageLoads||(this._uiPackageLoads=new Map());
+  if(loads.has(name))return loads.get(name);
+  this.uiPackages[name]='loading';
+  const pending=new Promise(resolve=>{
+   if(!wx.loadSubpackage){resolve(true);return;}
+   try{wx.loadSubpackage({name,success:()=>resolve(true),fail:()=>resolve(false)});}
+   catch(e){resolve(false);}
+  }).then(ok=>{
+   this.uiPackages[name]=ok?'ready':'failed';loads.delete(name);
+   this.invalidate();return ok;
   });
-  this._gameAssetsLoading=Promise.all(pkgs.map(loadPkg)).then(results=>{
-   // Start decoding every board/piece image immediately. uiImage keeps one shared
-   // Image object per path, so later draws reuse it instead of creating duplicates.
-   keys.forEach(key=>this.uiImage(key));
-   this._gameAssetsReady=results.every(Boolean);
-   this.invalidate();return this._gameAssetsReady;
-  }).finally(()=>{this._gameAssetsLoading=null;});
-  return this._gameAssetsLoading;
+  loads.set(name,pending);
+  return pending;
  };
  p.resize=function(){const info=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync();this.windowWidth=info.windowWidth;this.scale=info.windowWidth>=600?Math.min(info.windowWidth/375,info.windowHeight/812):info.windowWidth/375;this.offsetX=(info.windowWidth-375*this.scale)/2;this.height=info.windowHeight/this.scale;this.dpr=Resolution.dpr(info,this.fxQuality===0);this.canvas.width=Math.round(info.windowWidth*this.dpr);this.canvas.height=Math.round(info.windowHeight*this.dpr);this.top=(info.safeArea?info.safeArea.top:20)/this.scale;if(wx.getMenuButtonBoundingClientRect){const b=wx.getMenuButtonBoundingClientRect();if(b&&b.bottom)this.top=Math.max(this.top,b.bottom/this.scale+8);}this.top=Math.max(28,this.top);this.bottom=(info.safeArea?Math.max(0,info.windowHeight-info.safeArea.bottom):0)/this.scale;this.boardCache=null;this.layoutBoard(this.runtime.controller&&this.runtime.controller.data);this.invalidate();};
- p.uiImage=function(key){const src=assets[key];if(!src)return null;this.uiPackages=this.uiPackages||{};const pkg=src.split('/')[0];if(!this.uiPackages[pkg]){this.uiPackages[pkg]='loading';const ready=()=>{this.uiPackages[pkg]='ready';this.boardCache=null;this.invalidate();};if(wx.loadSubpackage){try{wx.loadSubpackage({name:pkg,success:ready,fail:()=>{this.uiPackages[pkg]='failed';this.invalidate();}});}catch(e){this.uiPackages[pkg]='failed';}}else ready();}
+ p.uiImage=function(key){const src=assets[key];if(!src)return null;this.uiPackages=this.uiPackages||{};const pkg=src.split('/')[0];if(!this.uiPackages[pkg])this.loadUiPackage(pkg);
  if(this.uiPackages[pkg]!=='ready')return null;let rec=this.images.get(src);if(!rec){rec={image:null};let finish;rec.ready=new Promise(resolve=>{finish=resolve;});this.images.set(src,rec);const im=wx.createImage();im.onload=()=>{rec.image=im;finish(true);if(key==='board_base')this.boardCache=null;this.uiRevision=(this.uiRevision||0)+1;this.invalidate();};im.onerror=()=>{rec.error=true;finish(false);this.invalidate();};im.src=src;}return rec.image;};
  p.uiArt=function(key,x,y,w,h,clip){const im=this.uiImage(key);if(!im)return false;const c=this.ctx,quiet=key==='background'||key==='home_hero';c.save();if(quiet&&key==='background')c.filter=this._sceneForArt==='home'?'saturate(.90) contrast(.95) brightness(1.02) blur(.45px)':'saturate(.84) brightness(1.03) blur(.35px)';else if(quiet)c.filter='saturate(.92) brightness(1.02)';if(clip)c.drawImage(im,...clip,x,y,w,h);else c.drawImage(im,x,y,w,h);c.restore();return true;};
  p.uiFit=function(key,box,clip){const im=this.uiImage(key);if(!im)return false;const sw=clip?clip[2]:im.width,sh=clip?clip[3]:im.height,k=Math.min(box.w/sw,box.h/sh);return this.uiArt(key,box.x+(box.w-sw*k)/2,box.y+(box.h-sh*k)/2,sw*k,sh*k,clip);};
@@ -51,6 +46,6 @@ function install(Renderer){const p=Renderer.prototype,oldDisc=p.disc;
  const entryY=t+free*.733+18,r=compact?27:33;[[84,'user',this.runtime.profile?'已登录':'登录','profile'],[187.5,'book','游戏规则','rules'],[291,'gear','设置','settings']].forEach(([x,icon,label,scene])=>{c.save();c.shadowColor='#67442040';c.shadowBlur=5;c.shadowOffsetY=3;const g=c.createLinearGradient(x,entryY,x,entryY+r*2);g.addColorStop(0,'#fffdf6');g.addColorStop(1,'#ebd9bc');c.beginPath();c.arc(x,entryY+r,r,0,Math.PI*2);c.fillStyle=g;c.fill();c.strokeStyle='#d8bd96';c.lineWidth=1;c.stroke();c.restore();this.uiIcon(icon,x,entryY+r,r*.95,'#292c36');this.text(label,x,entryY+r*2+13,14,'#18181b','center',true);this.targets.push({x:x-r-10,y:entryY-3,w:r*2+20,h:r*2+32,action:()=>this.runtime.open(scene)});});
  }
  const fs=compact?9.2:10,lh=compact?15.5:17,y0=h-bottom-(compact?67:84);NOTICE.forEach((line,i)=>this.text(line,187.5,y0+i*lh,fs,'#5b5147','center',false));};
- p.draw=function(now=Date.now()){const c=this.ctx,s=this.runtime.scene,controller=this.runtime.controller;this._targetState={scene:s,waiting:!!(controller&&controller.data&&controller.data.waiting)};c.setTransform(this.dpr*this.scale,0,0,this.dpr*this.scale,this.offsetX*this.dpr,0);const bx=-this.offsetX/this.scale,bw=this.windowWidth/this.scale;c.clearRect(bx,0,bw,this.height);c.fillStyle='#f7f0e4';c.fillRect(bx,0,bw,this.height);if(this._uiBooting){this.targets=[];return;}this._sceneForArt=s;this.uiArt('background',bx,0,bw,this.height);if(s==='home'){c.fillStyle='rgba(255,248,231,.025)';c.fillRect(bx,0,bw,this.height);}this.targets=[];if(s==='home')return this.home();if(s==='game'){c.fillStyle='rgba(255,248,231,.28)';c.fillRect(bx,0,bw,this.height);return this.game(now);}c.fillStyle='#faf6ef';c.fillRect(0,0,375,this.height);if(s==='difficulty')this.difficulty();if(s==='settings')this.settings();if(s==='rules')this.ruleScene();if(s==='profile')this.profileScene();};
+ p.draw=function(now=Date.now()){const c=this.ctx,s=this.runtime.scene,controller=this.runtime.controller;this._targetState={scene:s,waiting:!!(controller&&controller.data&&(controller.data.waiting||controller.data.starting))};c.setTransform(this.dpr*this.scale,0,0,this.dpr*this.scale,this.offsetX*this.dpr,0);const bx=-this.offsetX/this.scale,bw=this.windowWidth/this.scale;c.clearRect(bx,0,bw,this.height);c.fillStyle='#f7f0e4';c.fillRect(bx,0,bw,this.height);this._sceneForArt=s;this.uiArt('background',bx,0,bw,this.height);if(s==='home'){c.fillStyle='rgba(255,248,231,.025)';c.fillRect(bx,0,bw,this.height);}this.targets=[];if(s==='home')return this.home();if(s==='game'){c.fillStyle='rgba(255,248,231,.28)';c.fillRect(bx,0,bw,this.height);return this.game(now);}c.fillStyle='#faf6ef';c.fillRect(0,0,375,this.height);if(s==='difficulty')this.difficulty();if(s==='settings')this.settings();if(s==='rules')this.ruleScene();if(s==='profile')this.profileScene();};
 }
 module.exports={install,XS,YS,NOTICE};
