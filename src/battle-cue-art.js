@@ -1,13 +1,11 @@
-// Rasterize the lacquer, gilt edges and light blooms once, then reuse them per frame.
+// Rasterize the lettering and light blooms once, then reuse them per frame.
 const GOLD = {
- width:88, height:76, cut:13, label:'吃', size:43,
- face:['#a75b23','#462017','#6e3218'], edge:['#fff3be','#d28129','#ffe6a2'],
- ink:['#fff9d7','#ffdc86','#f6a642'], stroke:'#3a1810', detail:'#ffe0a0',
+ width:88, height:76, label:'吃', size:57,
+ ink:['#fff3be','#edaa43','#a7551d'], shadow:'rgba(68,31,12,.85)',
 };
 const RED = {
- width:204, height:78, cut:18, label:'将军', size:46,
- face:['#842b23','#411316','#6e231e'], edge:['#ffe5a2','#d98349','#ffd58b'],
- ink:['#fff9df','#ffe5b3','#f8a86c'], stroke:'#390d13', detail:'#ffc893',
+ width:204, height:86, label:'将军', size:64,
+ ink:['#fff0b9','#ffb66d','#db4b2b'], shadow:'rgba(68,18,14,.9)',
 };
 const IMPACT_ANGLES=[-2.8,-1.52,-.46,.82,2.27];
 
@@ -17,13 +15,6 @@ function texture(width,height,paint,scale=2){
  const ctx=canvas.getContext('2d');
  ctx.scale(scale,scale);paint(ctx);
  return canvas;
-}
-
-function bevelPath(ctx,x,y,w,h,cut){
- ctx.beginPath();
- ctx.moveTo(x+cut,y);ctx.lineTo(x+w-cut,y);ctx.lineTo(x+w,y+cut);
- ctx.lineTo(x+w,y+h-cut);ctx.lineTo(x+w-cut,y+h);ctx.lineTo(x+cut,y+h);
- ctx.lineTo(x,y+h-cut);ctx.lineTo(x,y+cut);ctx.closePath();
 }
 
 function ramp(ctx,top,bottom,colors){
@@ -38,29 +29,14 @@ function diamond(ctx,x,y,width,height){
  ctx.closePath();ctx.fill();
 }
 
-function plate(style){
- const {width:w,height:h,cut}=style;
- return texture(w,h,ctx=>{
-  const x=9,y=8,frameWidth=w-18,frameHeight=h-17;
-  ctx.save();ctx.shadowColor='#27110dbe';ctx.shadowBlur=9;ctx.shadowOffsetY=3;
-  bevelPath(ctx,x,y,frameWidth,frameHeight,cut);
-  ctx.fillStyle='#2d1513';ctx.fill();ctx.restore();
-  bevelPath(ctx,x+1,y+1,frameWidth-2,frameHeight-2,cut-1);
-  ctx.fillStyle=ramp(ctx,y,y+frameHeight,style.edge);ctx.fill();
-  bevelPath(ctx,x+4,y+4,frameWidth-8,frameHeight-8,cut-3);
-  ctx.fillStyle=ramp(ctx,y,y+frameHeight,style.face);ctx.fill();
-  bevelPath(ctx,x+6,y+6,frameWidth-12,frameHeight-12,cut-5);
-  ctx.strokeStyle=style.detail;ctx.lineWidth=.9;ctx.stroke();
-
-  // Small inlaid accents and a hairline catchlight along the top bevel.
-  ctx.fillStyle=style.detail;
-  diamond(ctx,x+10,h/2,3,4);diamond(ctx,w-x-10,h/2,3,4);
-  ctx.beginPath();ctx.moveTo(w*.32,y+3);ctx.lineTo(w*.68,y+3);
-  ctx.strokeStyle='#fff6d3';ctx.lineWidth=1;ctx.stroke();
-  ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
-  ctx.font='bold '+style.size+'px "KaiTi", "STKaiti", "Kaiti SC", "Noto Serif CJK SC", "Noto Sans CJK SC", serif';
-  ctx.strokeStyle=style.stroke;ctx.lineWidth=2.6;ctx.strokeText(style.label,w/2,h/2+1);
-  ctx.fillStyle=ramp(ctx,11,h-10,style.ink);ctx.fillText(style.label,w/2,h/2);
+function lettering({width,height,label,size,ink,shadow}){
+ return texture(width,height,ctx=>{
+  const x=width/2,y=height/2;
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.font='bold '+size+'px "KaiTi", "STKaiti", "Kaiti SC", "Noto Serif CJK SC", "Noto Sans CJK SC", serif';
+  ctx.shadowColor=shadow;ctx.shadowBlur=8;ctx.shadowOffsetY=4;
+  ctx.fillStyle=ramp(ctx,y-size*.5,y+size*.5,ink);
+  ctx.fillText(label,x,y);
  });
 }
 
@@ -76,7 +52,7 @@ function bloom(color,center){
 }
 
 function preload(renderer){
- const art=renderer._battleCueArt||(renderer._battleCueArt={eat:plate(GOLD),check:plate(RED)});
+ const art=renderer._battleCueArt||(renderer._battleCueArt={eat:lettering(GOLD),check:lettering(RED)});
  if(renderer.fxQuality!==0&&!art.goldBloom){
   art.goldBloom=bloom('rgba(255,174,52,.72)','rgba(255,232,146,.3)');
   art.redBloom=bloom('rgba(249,58,28,.7)','rgba(249,58,28,0)');
@@ -84,7 +60,7 @@ function preload(renderer){
  return art;
 }
 
-function drawBadge(renderer,key,x,y,width,alpha,scale){
+function drawLabel(renderer,key,x,y,width,alpha,scale){
  if(alpha<=0)return;
  const ctx=renderer.ctx,sprite=preload(renderer)[key];
  const w=width*scale,h=w*sprite.height/sprite.width;
@@ -182,4 +158,4 @@ function checkTrails(renderer,x,y,width,alpha,phase){
  ctx.restore();
 }
 
-module.exports={preload,drawBadge,captureImpact,checkHalo,checkTrails};
+module.exports={preload,drawLabel,captureImpact,checkHalo,checkTrails};
