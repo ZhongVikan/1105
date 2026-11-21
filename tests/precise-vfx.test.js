@@ -6,7 +6,21 @@ test('capture victim stays hidden if hidden, shrinks out, and captured arrays co
 test('rapid chase advances rules immediately and queues both impacts without missing audio',t=>{timers(t);const {c,events,heard}=page(scenarios.chase());a.ok(c.localMove('x',{x:1,y:5}));a.equal(c._state.pendingChase,'x');const deadline=c._clock.deadline;a.ok(c.localMove('x',{x:2,y:3}));a.equal(c._state.turn,'black');a.equal(c._state.captured.length,2);a.equal(c._battle.events.length,2);a.ok(c._battle.events[1].at>=c._battle.events[0].at+c._battle.events[0].timings.total);a.ok(c._clock.deadline>=deadline);t.mock.timers.tick(1300);a.deepEqual(events,['chase','capture']);a.equal(heard.filter(x=>x==='drop').length,2);c.clearPresentation();});
 test('double capture has two victims, one move, one capture sound event',t=>{timers(t);const {c,events}=page(scenarios.double());a.ok(c.localMove('bomb',{x:0,y:3}));a.equal(c.motion.removedPieces.length,2);a.equal(c._state.captured.length,2);a.equal(c._battle.events.length,1);t.mock.timers.tick(900);a.deepEqual(events,['capture']);c.clearPresentation();});
 test('ordinary and royal fusions preserve exact UI source metadata and voice mapping',t=>{timers(t);for(const [scenario,id,to,voice] of [['fusion','h',{x:3,y:5},'合棋'],['royal','a',{x:4,y:9},'44_侍卫护驾.wav']]){const {c,heard}=page(scenarios[scenario]());a.ok(c.localMove(id,to));a.equal(c.motion.removedPieces.length,1);a.equal(c._state.captured.length,0);a.ok(c.motion.timings.total>=350&&c.motion.timings.total<=550);const before=JSON.stringify(c._state);FX.frame(c,Date.now()+200);a.equal(JSON.stringify(c._state),before);t.mock.timers.tick(600);if(voice.endsWith('.wav'))a.ok(c._state.pieces.find(p=>p.id===id).fusionType==='guard_king');else a.ok(heard.includes('drop'));c.clearPresentation();}});
-test('capture-check has one check cue synchronized to its sound impact',t=>{timers(t);const {c,events}=page(scenarios.captureCheck());a.ok(c.localMove('r',{x:3,y:3}));const checks=c._battle.cues.filter(q=>q.warning);a.equal(checks.length,1);a.equal(checks[0].warning,true);a.equal(checks[0].at,c.motion.at+c.motion.timings.impact);t.mock.timers.tick(800);a.deepEqual(events,['check']);c.clearPresentation();});
+test('capture-check anchors each cue and plays one sound at impact',t=>{
+ timers(t);
+ const {c,events}=page(scenarios.captureCheck()),to={x:3,y:3};
+ a.ok(c.localMove('r',to));
+ const {at,timings}=c.motion;
+ const captures=c._battle.cues.filter(cue=>cue.type==='eat');
+ const checks=c._battle.cues.filter(cue=>cue.warning);
+ a.deepEqual(captures,[{type:'eat',point:to,at:at+timings.contact,duration:FX.EAT_DURATION}]);
+ a.equal(checks.length,1);
+ a.equal(checks[0].king.side,'black');
+ a.equal(checks[0].at,at+timings.impact);
+ t.mock.timers.tick(800);
+ a.deepEqual(events,['check']);
+ c.clearPresentation();
+});
 test('fusion timeout cancels pending fusion/capture sounds and cannot replay after flip/poll',t=>{timers(t);const {c,heard,events}=page(scenarios.royal());a.ok(c.localMove('a',{x:4,y:9}));c._clock.deadline=Date.now()-1;c.tick();a.equal(c._state.reason,'timeout');a.equal(c.motion,null);a.equal(c._battle.events.length,0);t.mock.timers.tick(2500);a.deepEqual(events,['timeout']);a.equal(heard.includes('drop'),false);a.equal(heard.includes('44_侍卫护驾.wav'),false);c.flip();c.sync('timeout');t.mock.timers.tick(1000);a.deepEqual(events,['timeout']);c.clearPresentation();});
 test('manual pause freezes visual time and sound; resume keeps sequence without extending game clock separately',t=>{timers(t);const {c,events}=page(scenarios.capture());c._mode='ai';a.ok(c.localMove('r',{x:2,y:4}));t.mock.timers.tick(60);c.togglePause();const frozen=c._battle.pausedAt,left=c._clock.remaining();t.mock.timers.tick(2000);a.equal(c._clock.remaining(),left);a.equal(c._battle.advance(Date.now()).at,1000);a.deepEqual(events,[]);c.togglePause();a.equal(c._battle.pausedAt,null);a.equal(c.motion.at,3000);t.mock.timers.tick(1000);a.deepEqual(events,['capture']);c.clearPresentation();});
 test('background, unload and restart clear all transient state and old audio timers',t=>{timers(t);const {c,events}=page(scenarios.capture());c._audio.hide=()=>{};c._audio.destroy=()=>{};c.localMove('r',{x:2,y:4});c.onHide();a.equal(c.motion,null);a.equal(c._battle.active(),false);t.mock.timers.tick(800);a.deepEqual(events,[]);c._hidden=false;c._state=scenarios.walk();c._clock.start();c.sync();a.equal(c._battle.active(),false);c.onUnload();a.equal(c._battleSounds.length,0);});

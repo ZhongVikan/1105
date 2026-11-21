@@ -106,7 +106,7 @@ function install(Renderer){const p=Renderer.prototype;
  this.player(d.topSide,d.topName,d.topAvatar,this.top+28,topCaptured,d,now);if(d.turn===d.topSide&&!d.paused&&!inference)FX.danger(this,this.top+28,warning);
  this.board(view,b,motion,visualNow);
  if(!motion)this.captureHints(c,b);
- if(!inference){this.ctx.save();this.ctx.translate(b.x,b.y);this.ctx.scale(b.w/720,b.h/800);if(c._battle)FX.drawCues(this,c._battle.cues,visualNow,d.flipped);FX.rings(this,view,motion,visualNow,c._battle&&c._battle.selection);this.ctx.restore();}
+ if(!inference){this.ctx.save();this.ctx.translate(b.x,b.y);this.ctx.scale(b.w/720,b.h/800);FX.rings(this,view,motion,visualNow,c._battle&&c._battle.selection);this.ctx.restore();}
  const boardBottom=b.y+b.h*(1094/1200),trayY=boardBottom+7,step=this.captureTray(bottomCaptured,trayY);
  const rowStep=2*33*b.w/720*.8+3,trayHeight=Math.max(64,2*rowStep+6,step);
  if(!inference&&d.pendingChase&&(d.mode!=='ai'||d.turn==='red'))this.button('结束行动',264,trayY+36,95,28,()=>c.finishChase(),true);if(inference&&trial&&trial.pendingChase)this.button('结束追击',264,trayY+36,95,28,()=>c.finishInferenceChase(),true);
@@ -117,6 +117,9 @@ function install(Renderer){const p=Renderer.prototype;
  else [['悔棋','undo'],['翻转','flip'],['重开','restart'],['更多','more']].forEach(([label,fn],i)=>this.button(label,16+i*88,by,79,46,()=>c[fn]()));
  if(!inference&&d.matchFound&&now-d.matchFoundAt<900){const age=Math.max(0,now-d.matchFoundAt),p=age/900,alpha=p<.22?p/.22:1-(p-.22)/.78,scale=.92+.08*Math.min(1,p/.28);this.ctx.save();this.ctx.globalAlpha=Math.max(0,alpha);this.ctx.translate(187.5,Math.min(this.height/2,b.y+b.h*.52));this.ctx.scale(scale,scale);this.card(-112,-34,224,68,'rgba(255,248,225,.94)','#d49b3e');this.text('匹配成功',0,0,25,'#9b5d1c','center',true);this.ctx.restore();}
  if(!inference&&d.stickerImage)this.drawSticker(d.stickerImage,102,b.y+b.h*.25,171,0.5);
+ if(!inference&&c._battle&&c._battle.cues.length){
+  FX.drawCues(this,c._battle.cues,visualNow,d.flipped,{board:b,topSide:d.topSide,topCheckY:b.y-14,bottomCheckY:playerY-19});
+ }
  if(d.waiting){const y=this.top+145;this.overlay();const expanded=!d.onlineMatch&&d.seatMenu;if(d.onlineMatch){this.card(27,y,321,187,'rgba(255,247,231,.78)','#e6c58d');this.text('正在匹配棋友',187.5,y+33,22,'#74512d','center',true);this.text('已等待 '+Math.max(0,d.matchSeconds||0)+' 秒',187.5,y+61,14,'#a47745','center');this.button('取消匹配',54,y+90,267,48,()=>c.cancelWait(),true);}else{this.card(27,y,321,expanded?420:345,'rgba(255,247,231,.78)','#e6c58d');this.text('等待棋友入座',187.5,y+33,22,'#74512d','center',true);this.button('邀请微信好友',54,y+66,267,48,()=>this.runtime.share(),true);this.button('面对面模式',54,y+124,267,48,()=>c.startHotseat(),true);this.button('取消等待',54,y+182,267,48,()=>c.cancelWait(),true);const labels={red:'红方',black:'黑方',rotate:'轮换'},label=labels[d.seatPreference]||'轮换';this.button('对局设置',54,y+240,267,48,()=>c.toggleSeatMenu(),true);if(!d.seatMenu){this.text('我方：',112,y+302,13,'#8a6b4a','right');if(label==='轮换'){this.text('轮',132,y+302,13,'#c52d21','left',true);this.text('换',145,y+302,13,'#252525','left',true);}else this.text(label,132,y+302,13,label==='红方'?'#c52d21':'#252525','left',true);}if(d.seatMenu){[['red','红方'],['black','黑方'],['rotate','轮换']].forEach(([value,text],i)=>{const oy=y+289+i*36;if(value==='rotate'){this.text('轮',178,oy+17,16,'#c52d21','center',true);this.text('换',196,oy+17,16,'#252525','center',true);}else this.text(text,187.5,oy+17,16,value==='red'?'#c52d21':'#252525','center',true);this.targets.push({x:54,y:oy,w:267,h:36,action:()=>c.setSeatPreference(value)});});}}}
  if(d.starting)this.startingRoom();
  if(d.inference&&d.inferenceAssumptionMenu)this.inferenceAssumptionSheet(c);

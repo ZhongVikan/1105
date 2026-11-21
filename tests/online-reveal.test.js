@@ -45,6 +45,20 @@ for(const variant of ['dark','jieqi']){
  });
 }
 
+test('a late online capture uses the confirmed destination for a single badge',t=>{
+ const {c,move,response}=setup(t,'jieqi',true);
+ c.beginOptimisticMove(move);
+ t.mock.timers.tick(c.motion.timings.total+1000);
+ FX.frame(c,Date.now());
+ const confirmed=response();
+ c.applyRoom(confirmed);
+ c.applyRoom(confirmed);
+ assert.equal(c.motion,null);
+ assert.deepEqual(c._battle.cues.filter(cue=>cue.type==='eat'),[
+  {type:'eat',point:move.to,at:Date.now(),duration:FX.EAT_DURATION},
+ ]);
+});
+
 test('an older in-flight poll cannot replace the preview or release the command lock',async t=>{
  const {c,move,response}=setup(t),before=copy(c._room),original=Online.call;let resolve;
  Online.call=()=>new Promise(done=>{resolve=done;});t.after(()=>{Online.call=original;});

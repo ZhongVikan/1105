@@ -10,7 +10,7 @@ const out=path.resolve(process.argv[2]||'/tmp/darkchess-recording');fs.mkdirSync
  const wait=async(ms,label)=>{if(label)title=label;const start=host.now;for(let i=1;i<=Math.ceil(ms/1000*30);i++){host.advance(start+i*1000/30);shot();await Promise.resolve();}};
  clip('01-movement-capture-reveal');
  let c=await host.load(scenarios.walk());await wait(300,'实际代码运行 · 普通走子');await host.move('r',{x:0,y:5});await wait(650);await host.move('b',{x:8,y:6});await wait(650);
- c=await host.load(scenarios.capture());await wait(250,'普通吃子 · 接触 / 消散 / 中央「吃」');await host.move('r',{x:2,y:4});await wait(1000);
+ c=await host.load(scenarios.capture());await wait(250,'普通吃子 · 金色撞击 / 落点徽记');await host.move('r',{x:2,y:4});await wait(1000);
  c=await host.load(scenarios.captureCheck());await wait(250,'吃子并将军 · 同次事件按时序播放');await host.move('r',{x:3,y:3});await wait(1100);
  for(const variant of ['dark','jieqi']){c=await host.load(scenarios.reveal(variant));await wait(250,variant==='dark'?'暗棋 · 到达后翻开':'揭棋 · 正反面单面切换');const p=c._state.pieces.find(p=>p.x===0&&p.y===9);await host.move(p.id,{x:0,y:8});await wait(1100);}
  c=await host.load(scenarios.hiddenVictim());await wait(250,'暗子被吃 · 身份不提前显示');await host.move('r',{x:0,y:3});await wait(1000);
