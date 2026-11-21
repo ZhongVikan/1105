@@ -1,4 +1,5 @@
 // Presentation only. All coordinates are in the existing 720 x 800 board space.
+const CueArt=require('./battle-cue-art');
 const clamp=x=>Math.max(0,Math.min(1,x));
 const smooth=x=>{const t=clamp(x);return t*t*t*(t*(t*6-15)+10);};
 function timing(move={}){
@@ -49,9 +50,13 @@ function under(renderer,motion,elapsed,flipped){
 }
 function sparks(renderer,event,x,y,age,quality,subtle=false){
  const a=event.particles;if(!a||age<0)return;const c=renderer.ctx,n=quality===0?Math.min(6,a.length/6):a.length/6;c.save();c.lineCap='round';
+ const gold=subtle?'#f3bd4b':'#ffe297',white=subtle?'#fff0ae':'#fff9df';
  for(let i=0;i<n;i++){const k=i*6,life=a[k+4],t=age/life;if(t>=1)continue;
-  const dist=17+a[k+2]*(age/1000)*(1-.28*t),xx=x+a[k]*dist,yy=y+a[k+1]*dist+5*t*t,len=a[k+3]*(1-t);
-  c.globalAlpha=(subtle?.35:.85)*(1-t)*(1-t);c.strokeStyle=i%3?'#f3bd4b':'#fff0ae';c.lineWidth=a[k+5];c.beginPath();c.moveTo(xx,yy);c.lineTo(xx-a[k]*len,yy-a[k+1]*len);c.stroke();
+  const dist=(subtle?17:33)+a[k+2]*(age/1000)*(1-.28*t);
+  const xx=x+a[k]*dist,yy=y+a[k+1]*dist+5*t*t,len=(a[k+3]+(subtle?0:4))*(1-t),fade=(1-t)**2;
+  c.beginPath();c.moveTo(xx,yy);c.lineTo(xx-a[k]*len,yy-a[k+1]*len);
+  if(!subtle){c.globalAlpha=.56*fade;c.strokeStyle='#ae652c';c.lineWidth=a[k+5]+1.3;c.stroke();}
+  c.globalAlpha=(subtle?.35:1)*fade;c.strokeStyle=i%3?gold:white;c.lineWidth=a[k+5];c.stroke();
  }c.restore();
 }
 function over(renderer,motion,elapsed,flipped){
@@ -61,41 +66,62 @@ function over(renderer,motion,elapsed,flipped){
  const capture=!!(m.capturedId||(m.capturedIds&&m.capturedIds.length));
  const drop=clamp(age/120);if(drop<1)ring(c,at.x,at.y,29+15*smooth(drop),'#f1c96b',.23*(1-drop),1.1);
  if(capture){
-  const flash=clamp(age/95);if(flash<1){c.save();c.globalAlpha=.28*Math.sin(Math.PI*flash);c.fillStyle='#ffe7a2';c.beginPath();c.arc(at.x,at.y,17-5*flash,0,Math.PI*2);c.fill();c.restore();}
-  const wave=clamp(age/230);if(wave<1)ring(c,at.x,at.y,22+28*smooth(wave),'#f1b84a',.65*(1-wave),1.3);
+  CueArt.captureImpact(renderer,at.x,at.y,age);
   sparks(renderer,motion,at.x,at.y,age,renderer.fxQuality);
  }
  if(m.revealed){const f=revealProgress(elapsed,t);if(f>.5){sweep(renderer,at.x,at.y,(f-.5)*2,.3);sparks(renderer,motion,at.x,at.y,elapsed-t.travel-t.reveal*.5,0,true);}}
 }
-function makeGlyph(renderer,label,size){
- const scale=1.5,canvas=wx.createCanvas();canvas.width=Math.ceil((label.length*size+32)*scale);canvas.height=Math.ceil((size+34)*scale);const c=canvas.getContext('2d');c.scale(scale,scale);
- c.font='bold '+size+'px "Noto Sans CJK SC", sans-serif';c.textAlign='center';c.textBaseline='middle';c.lineJoin='round';const x=canvas.width/scale/2,y=canvas.height/scale/2;
- c.strokeStyle='#67370f';c.lineWidth=2.4;c.strokeText(label,x,y+1.5);
- const g=c.createLinearGradient(0,y-size/2,0,y+size/2);g.addColorStop(0,'#fff4c1');g.addColorStop(.45,'#ffdc6c');g.addColorStop(.55,'#edb63b');g.addColorStop(1,'#d38b1f');c.fillStyle=g;c.fillText(label,x,y);
- return {canvas,w:canvas.width/scale,h:canvas.height/scale};
-}
-function preload(renderer){if(renderer._battleGlyphs)return;renderer._battleGlyphs={eat:makeGlyph(renderer,'吃',76),check:makeGlyph(renderer,'将军',50)};}
-function glyph(renderer,key,x,y,alpha,scale=1){if(alpha<=0)return;preload(renderer);const g=renderer._battleGlyphs[key],c=renderer.ctx;c.save();c.globalAlpha=alpha;c.translate(x,y);c.scale(scale,scale);c.drawImage(g.canvas,-g.w/2,-g.h/2,g.w,g.h);c.restore();}
 const EAT_DURATION=1100;
 function eatEnvelope(age){return age<0||age>=EAT_DURATION?0:age<120?smooth(age/120):age<680?1:1-smooth((age-680)/420);}
-function eatLabel(renderer,age){
+function eatLabel(renderer,point,age,board,flipped){
  const alpha=eatEnvelope(age);if(alpha<=0)return;
- const scale=age<130?.92+.11*smooth(age/130):1.03-.03*smooth((age-130)/100);
- glyph(renderer,'eat',360,376-3*smooth(age/EAT_DURATION),alpha,scale);
+ const cell=renderer.boardPoint(point,flipped),w=Math.max(37,Math.min(49,board.w*.132));
+ const x=board.x+cell.x*board.w/720+(cell.x>360?-1:1)*w*.64;
+ const y=board.y+cell.y*board.h/800+(cell.y<180?1:-1)*w*.65;
+ const inset=w*.58,entry=smooth(age/140);
+ const cx=Math.max(board.x+inset,Math.min(board.x+board.w-inset,x));
+ const cy=Math.max(board.y+inset,Math.min(board.y+board.h*.9-inset,y));
+ const scale=age<135?.75+.33*smooth(age/135):1.08-.08*smooth((age-135)/100);
+ CueArt.drawBadge(renderer,'eat',cx,cy+8*(1-entry)-3*smooth(age/EAT_DURATION),w,alpha,scale);
 }
-function eatText(renderer,motion,elapsed){const m=motion.move;if(m.capturedId||(m.capturedIds&&m.capturedIds.length))eatLabel(renderer,elapsed-(motion.timings||timing(m)).contact);}
-function cue(renderer,event,now,flipped){
- if(!event)return;if(event.type==='eat'){eatLabel(renderer,now-event.at);return;}const age=now-event.at,duration=event.duration||650;if(age<0||age>=duration)return;
- const t=age/duration,alpha=Math.min(smooth(age/90),1-smooth((age-(duration-180))/180));
- if(event.warning){if(event.king){const q=renderer.boardPoint(event.king,flipped);ring(renderer.ctx,q.x,q.y,35+12*smooth(t),'#cf4d2a',alpha*.65,2);ring(renderer.ctx,q.x,q.y,33+6*smooth(t),'#f0ba58',alpha*.45,1);}
-  glyph(renderer,'check',360,300,alpha,.96+.04*smooth(age/130));
- }else{
-  // Terminal convergence: local corner strokes only; result modal keeps its own timer.
-  const c=renderer.ctx;c.save();c.globalAlpha=.45*alpha;c.strokeStyle='#e6b457';c.lineWidth=1.5;const d=70-14*smooth(t);
-  for(let i=0;i<4;i++){const a=i*Math.PI/2+Math.PI/4,x=360+Math.cos(a)*d,y=376+Math.sin(a)*d;c.beginPath();c.moveTo(x-6,y);c.lineTo(x,y-6);c.lineTo(x+6,y);c.stroke();}c.restore();
+function cueAlpha(age,duration){return Math.min(smooth(age/90),1-smooth((age-(duration-180))/180));}
+function terminalCue(ctx,age,duration){
+ // The result modal owns its own timer.
+ ctx.save();ctx.globalAlpha=.45*cueAlpha(age,duration);ctx.strokeStyle='#e6b457';ctx.lineWidth=1.5;
+ const d=70-14*smooth(age/duration);
+ for(let i=0;i<4;i++){
+  const a=i*Math.PI/2+Math.PI/4,x=360+Math.cos(a)*d,y=376+Math.sin(a)*d;
+  ctx.beginPath();ctx.moveTo(x-6,y);ctx.lineTo(x,y-6);ctx.lineTo(x+6,y);ctx.stroke();
+ }
+ ctx.restore();
+}
+function drawCues(renderer,events,now,flipped,{board,topSide,topCheckY,bottomCheckY}){
+ const ctx=renderer.ctx;
+ let eat=null,check=null;
+ ctx.save();ctx.translate(board.x,board.y);ctx.scale(board.w/720,board.h/800);
+ for(const event of events){
+  const age=now-event.at;
+  if(age<0||age>=event.duration)continue;
+  if(event.type==='eat'){if(event.point&&(!eat||event.at>=eat.at))eat=event;}
+  else if(event.warning){if(event.king&&(!check||event.at>=check.at))check=event;}
+  else terminalCue(ctx,age,event.duration);
+ }
+ let checkAlpha=0;
+ if(check){
+  const age=now-check.at,king=renderer.boardPoint(check.king,flipped);
+  checkAlpha=cueAlpha(age,check.duration);
+  CueArt.checkHalo(renderer,king.x,king.y,checkAlpha,smooth(age/check.duration));
+ }
+ ctx.restore();
+ if(eat)eatLabel(renderer,eat.point,now-eat.at,board,flipped);
+ if(check){
+  const age=now-check.at,baseY=check.king.side===topSide?topCheckY:bottomCheckY;
+  const y=baseY+5*(1-smooth(age/140)),width=116;
+  const scale=age<140?.83+.22*smooth(age/140):1.05-.05*smooth((age-140)/110);
+  CueArt.checkTrails(renderer,187.5,y,width*scale,checkAlpha,age/340);
+  CueArt.drawBadge(renderer,'check',187.5,y,width,checkAlpha,scale);
  }
 }
-function drawCues(renderer,events,now,flipped){let eat=null;for(const e of events){if(e.type==='eat'){if(now>=e.at&&now<e.at+e.duration&&(!eat||e.at>=eat.at))eat=e;}else cue(renderer,e,now,flipped);}if(eat)cue(renderer,eat,now,flipped);}
 function warningPhase(controller,now){
  const d=controller.data,key=d.turn;let w=controller._warningPhase;
  const on=d.seconds<=10&&!d.ended&&!d.waiting&&!controller._hidden;
@@ -115,4 +141,4 @@ function rings(renderer,data,motion,now,selectionPulse){
  if(selected&&selected!==last)selection(renderer,selected,data.flipped,motion,now);
  pulse(renderer,selected,data.flipped,selectionPulse,now);
 }
-module.exports={timing,pose,smooth,particles,selection,under,over,eatText,eatEnvelope,EAT_DURATION,drawCues,cue,preload,warningPhase,danger,frame,rings};
+module.exports={timing,pose,smooth,particles,selection,under,over,eatEnvelope,EAT_DURATION,drawCues,preload:CueArt.preload,warningPhase,danger,frame,rings};

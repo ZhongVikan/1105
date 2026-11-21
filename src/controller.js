@@ -163,7 +163,7 @@ module.exports={
   if(!this._battle)this._battle=new BattleTimeline();const motion=pending.motion;
   this._battle.confirm(motion,state.lastMove,{pieces:patch.pieces,afterBySide:{[patch.topSide]:patch.topCaptured,[patch.bottomSide]:patch.bottomCaptured}},now);
   this.motion=this._battle.advance(now);const at=motion?Math.max(now,motion.at+motion.timings.impact):now;
-  if(state.lastMove&&(state.lastMove.capturedId||(state.lastMove.capturedIds&&state.lastMove.capturedIds.length))){const contact=motion?Math.max(now,motion.at+motion.timings.contact):now;this._battle.cues.push({type:'eat',at:contact,duration:FX.EAT_DURATION});this._battle.revision++;}
+  if(state.lastMove&&(state.lastMove.capturedId||(state.lastMove.capturedIds&&state.lastMove.capturedIds.length))){const contact=motion?Math.max(now,motion.at+motion.timings.contact):now;this._battle.cues.push({type:'eat',point:state.lastMove.to||state.lastMove.from,at:contact,duration:FX.EAT_DURATION});this._battle.revision++;}
   if(event==='check'||state.status==='ended'){const king=event==='check'?state.pieces.find(p=>p.kind==='general'&&p.side===state.turn):null;this._battle.cues.push({at,duration:650,warning:event==='check',reason:state.reason,king});this._battle.revision++;}
   const sound={event,state,at};(this._battleSounds||(this._battleSounds=[])).push(sound);this.armBattleSound(sound);
  },
