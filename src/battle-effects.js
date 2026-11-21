@@ -82,7 +82,7 @@ function eatLabel(renderer,point,age,board,flipped){
  const cx=Math.max(board.x+inset,Math.min(board.x+board.w-inset,x));
  const cy=Math.max(board.y+inset,Math.min(board.y+board.h*.9-inset,y));
  const scale=age<135?.75+.33*smooth(age/135):1.08-.08*smooth((age-135)/100);
- CueArt.drawBadge(renderer,'eat',cx,cy+8*(1-entry)-3*smooth(age/EAT_DURATION),w,alpha,scale);
+ CueArt.drawLabel(renderer,'eat',cx,cy+8*(1-entry)-3*smooth(age/EAT_DURATION),w,alpha,scale);
 }
 function cueAlpha(age,duration){return Math.min(smooth(age/90),1-smooth((age-(duration-180))/180));}
 function terminalCue(ctx,age,duration){
@@ -119,7 +119,7 @@ function drawCues(renderer,events,now,flipped,{board,topSide,topCheckY,bottomChe
   const y=baseY+5*(1-smooth(age/140)),width=116;
   const scale=age<140?.83+.22*smooth(age/140):1.05-.05*smooth((age-140)/110);
   CueArt.checkTrails(renderer,187.5,y,width*scale,checkAlpha,age/340);
-  CueArt.drawBadge(renderer,'check',187.5,y,width,checkAlpha,scale);
+  CueArt.drawLabel(renderer,'check',187.5,y,width,checkAlpha,scale);
  }
 }
 function warningPhase(controller,now){
