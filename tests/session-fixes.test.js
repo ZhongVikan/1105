@@ -6,10 +6,12 @@ function syncController(profile,fake=null){
  c.setData=patch=>Object.assign(c.data,patch);c.presentTransition=()=>{};c.updateResult=()=>{};return c;
 }
 
-test('boot gate keeps fallback demo UI hidden while assets load',()=>{
- const context=new Proxy({measureText:t=>({width:String(t).length*10})},{get:(o,k)=>k in o?o[k]:()=>{}});
- global.requestAnimationFrame=()=>1;global.cancelAnimationFrame=()=>{};global.wx={createCanvas:()=>({getContext:()=>context}),getWindowInfo:()=>({windowWidth:375,windowHeight:812,pixelRatio:2,safeArea:{top:20,bottom:800}}),getMenuButtonBoundingClientRect:()=>({bottom:52})};
- const r=new Renderer({scene:'home',controller:null});r._uiBooting=true;r.draw();assert.deepEqual(r.targets,[]);delete global.wx;delete global.requestAnimationFrame;delete global.cancelAnimationFrame;
+test('home controls are usable while the first artwork is loading',()=>{
+ const context=new Proxy({measureText:t=>({width:String(t).length*10}),createLinearGradient:()=>({addColorStop(){}})},{get:(o,k)=>k in o?o[k]:()=>{}});
+ const packages=[];
+ global.requestAnimationFrame=()=>1;global.cancelAnimationFrame=()=>{};global.wx={createCanvas:()=>({getContext:()=>context}),getWindowInfo:()=>({windowWidth:375,windowHeight:812,pixelRatio:2,safeArea:{top:20,bottom:800}}),getMenuButtonBoundingClientRect:()=>({bottom:52}),loadSubpackage:req=>packages.push(req.name)};
+ try{const r=new Renderer({scene:'home',controller:null});r.draw();assert.equal(r.targets.length,10);assert.ok(packages.includes('uiTitle'));assert.ok(!packages.includes('uiFusionPieces'));}
+ finally{delete global.wx;delete global.requestAnimationFrame;delete global.cancelAnimationFrame;}
 });
 
 test('online undo sends an undo request instead of a restart request',()=>{

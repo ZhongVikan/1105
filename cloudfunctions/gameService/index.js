@@ -1,8 +1,10 @@
 const cloud=require('wx-server-sdk'),crypto=require('crypto');cloud.init({env:cloud.DYNAMIC_CURRENT_ENV});
 const db=cloud.database(),G=require('./shared/game-engine'),S=require('./service');
+const QUEUE_HEARTBEAT_MS=4000,QUEUE_TTL_MS=12000,READY_TIMEOUT_MS=15000;
 const uidKey=id=>crypto.createHash('sha256').update(id).digest('hex');
 const profile=p=>({uid:p.uid,nickname:p.nickname,avatar:p.avatar});
 async function optional(ref){try{const data=(await ref.get()).data;if(data)delete data._id;return data;}catch(e){if(/not exist|not found|不存在/i.test(e.message))return null;throw e;}}
+function liveEntries(lobby,now){return lobby.entries.filter(entry=>now-entry.at<QUEUE_TTL_MS);}
 function avatarFormat(bytes) {
  if (!Buffer.isBuffer(bytes) || bytes.length < 12 || bytes.length > 384 * 1024) return '';
  if (bytes.toString('hex', 0, 8) === '89504e470d0a1a0a') return 'png';
@@ -45,7 +47,7 @@ exports.main=async event=>{
   const room=await optional(rooms.doc(event.roomId)),now=Date.now();
   if(!room)throw Error('房间不存在');
   const beforeRev=room.rev;S.expire(room,now);
-  if(room.black&&room.rev===beforeRev)return {ok:true,...S.publicRoom(room,uid,now)};
+  if(room.rev===beforeRev&&!room.starting&&(room.black||room.state.status==='ended'))return {ok:true,...S.publicRoom(room,uid,now)};
  }
  if(event.action==='profile'){
   const nickname=String(event.nickname||'').trim(),avatar=String(event.avatar||'');if(!nickname||nickname.length>24||!avatar.startsWith('cloud://'))throw Error('请填写昵称并选择头像');
@@ -57,15 +59,23 @@ exports.main=async event=>{
   const now=Date.now(),ur=tx.collection('chess_users').doc(key),fresh=await optional(ur);if(!fresh)throw Error('请先登录');
   const roomCollection=tx.collection('chess_rooms');
   if(['create','match','join','cancel'].includes(event.action)){
-   const lobbyRef=tx.collection('chess_lobby').doc('queue'),lobby=await optional(lobbyRef)||{entries:[]};lobby.entries=lobby.entries.filter(e=>now-e.at<120000);
+   const lobbyRef=tx.collection('chess_lobby').doc('queue'),lobby=await optional(lobbyRef)||{entries:[]};lobby.entries=liveEntries(lobby,now);
    if(fresh.activeRoom){
     const activeRef=roomCollection.doc(fresh.activeRoom),active=await optional(activeRef);
+    if(event.action==='cancel'&&event.roomId&&event.roomId!==fresh.activeRoom){
+     // A retry for an old queue entry must not cancel the current room.
+     if(active&&active.red&&active.black&&active.state.status==='playing'){
+      S.expire(active,now);await activeRef.set({data:active});return {ok:true,...S.publicRoom(active,uid,now)};
+     }
+     return {ok:true,cancelled:true};
+    }
     if(active){
      // Settle timeout before deciding whether this account is still occupied.
      S.expire(active,now);
      if(active.state.status==='playing'){
       const reuseWaiting=event.action==='join'?event.roomId===active.id:
-       event.action!=='cancel'&&(active.state.variant||'dark')===variant&&!!active.match===(event.action==='match');
+       event.action!=='cancel'&&(active.state.variant||'dark')===variant&&!!active.match===(event.action==='match')&&
+       (!active.match||lobby.entries.some(entry=>entry.id===active.id));
       if(active.black||reuseWaiting){
        // Resume a real game, including its server-side variant, rather than lock the user out.
        await activeRef.set({data:active});return {ok:true,...S.publicRoom(active,uid,now)};
@@ -99,7 +109,9 @@ exports.main=async event=>{
     const joining=profile(fresh),existing=room.red,preference=room.seatPreference||'random';
     const ownerSide=preference==='red'?'red':preference==='black'?'black':preference==='rotate'?((room.round||0)%2===0?'red':'black'):(crypto.randomInt(0,2)===0?'red':'black');
     if(ownerSide==='red'){room.red=existing;room.black=joining;}else{room.red=joining;room.black=existing;}
-    room.deadline=now+60000;room.rev++;lobby.entries=lobby.entries.filter(e=>e.id!==room.id);
+    room.deadline=0;room.rev++;
+    room.starting={rev:room.rev,until:now+READY_TIMEOUT_MS,red:null,black:null};
+    lobby.entries=lobby.entries.filter(e=>e.id!==room.id);
    }
    else {room={id:crypto.randomBytes(16).toString('hex'),red:profile(fresh),black:null,ownerUid:fresh.uid,seatPreference:event.action==='create'?(event.seatPreference||'rotate'):'random',round:0,state:G.newGame(undefined,variant),history:[],deadline:0,rev:0,pauseUsed:{},createdAt:now,match:event.action==='match',queueHeartbeatAt:now};if(event.action==='match'){if(lobby.entries.length>=100)throw Error('匹配繁忙，请稍后重试');lobby.entries.push({id:room.id,at:now});}}
    await roomCollection.doc(room.id).set({data:room});await ur.update({data:{activeRoom:room.id}});await lobbyRef.set({data:lobby});return {ok:true,...S.publicRoom(room,uid,now)};
@@ -109,14 +121,34 @@ exports.main=async event=>{
    const side=room.red&&room.red.uid===uid?'red':room.black&&room.black.uid===uid?'black':null;
    if(!side)throw Error('你不在这个房间');
    if(room.state.status==='ended'){
-    room[side]=null;room.rev++;await ref.set({data:room});await ur.update({data:{activeRoom:null}});return {ok:true,left:true};
+    room[side]=null;room.pending=null;room.rev++;
+    await ref.set({data:room});
+    if(fresh.activeRoom===room.id)await ur.update({data:{activeRoom:null}});
+    return {ok:true,left:true};
    }
    throw Error('对局进行中不能离开房间');
   }
-  const beforeRev=room.rev;S.reduce(room,uid,event,now);if(event.action==='poll'&&room.rev===beforeRev){
-   if(!room.black&&room.match&&now-(room.queueHeartbeatAt||room.createdAt||0)>=15000){room.queueHeartbeatAt=now;const lr=tx.collection('chess_lobby').doc('queue'),lobby=await optional(lr)||{entries:[]},entry=lobby.entries.find(e=>e.id===room.id);if(entry)entry.at=now;await lr.set({data:lobby});await ref.set({data:room});}
-   return {ok:true,...S.publicRoom(room,uid,now)};
-  }if(!room.black&&room.match&&event.action==='poll'){const lr=tx.collection('chess_lobby').doc('queue'),lobby=await optional(lr)||{entries:[]};const entry=lobby.entries.find(e=>e.id===room.id);if(entry){entry.at=now;await lr.set({data:lobby});}else if(lobby.entries.length<100){lobby.entries.push({id:room.id,at:now});await lr.set({data:lobby});}}await ref.set({data:room});return {ok:true,...S.publicRoom(room,uid,now)};
+  const beforeRev=room.rev;
+  S.reduce(room,uid,event,now);
+  let writeRoom=event.action!=='poll'||room.rev!==beforeRev;
+  if(event.action==='poll'&&room.match&&!room.black&&room.state.status==='playing'){
+   const age=now-(room.queueHeartbeatAt||room.createdAt||0);
+   if(age>=QUEUE_TTL_MS)return {ok:true,...S.publicRoom(room,uid,now),queueExpired:true};
+   if(age>=QUEUE_HEARTBEAT_MS){
+    const lr=tx.collection('chess_lobby').doc('queue'),lobby=await optional(lr)||{entries:[]};
+    lobby.entries=liveEntries(lobby,now);
+    const entry=lobby.entries.find(value=>value.id===room.id);
+    if(entry)entry.at=now;
+    else{
+     if(lobby.entries.length>=100)return {ok:true,...S.publicRoom(room,uid,now),queueExpired:true};
+     lobby.entries.push({id:room.id,at:now});
+    }
+    room.queueHeartbeatAt=now;writeRoom=true;
+    await lr.set({data:lobby});
+   }
+  }
+  if(writeRoom)await ref.set({data:room});
+  return {ok:true,...S.publicRoom(room,uid,now)};
  });return result;
  }catch(e){console.error('gameService failed:',e.message);return {ok:false,error:e.message||'服务暂不可用'};}
 };

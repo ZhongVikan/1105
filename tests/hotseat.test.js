@@ -7,12 +7,13 @@ function page(state=G.newGame(undefined,'classic')){
 }
 
 test('waiting friend room can switch to offline hotseat without keeping network state',async()=>{
- const original=Online.call,calls=[];Online.call=async(...args)=>{calls.push(args);return {ok:true};};
- try{const c=page();assert.equal(c.startHotseat(),true);await Promise.resolve();assert.equal(c._mode,'local');assert.equal(c.data.mode,'local');assert.equal(c.data.waiting,false);assert.equal(c.data.onlineMatch,false);assert.equal(c._room,null);assert.deepEqual(calls,[['cancel',{roomId:'r',rev:2}]]);}finally{Online.call=original;}
+ const original=Online.call,calls=[];Online.call=async(...args)=>{calls.push(args);return {ok:true,cancelled:true};};
+ try{const c=page();assert.equal(await c.startHotseat(),true);assert.equal(c._mode,'local');assert.equal(c.data.mode,'local');assert.equal(c.data.waiting,false);assert.equal(c.data.onlineMatch,false);assert.equal(c._room,null);assert.deepEqual(calls,[['cancel',{roomId:'r',rev:2}]]);}finally{Online.call=original;}
 });
 
-test('hotseat restores private dark pieces when leaving a public waiting room',()=>{
- const privateState=G.newGame(()=>.4,'dark'),publicState={...privateState,pieces:G.displayPieces(privateState.pieces)},c=page(publicState);c.startHotseat();assert.doesNotThrow(()=>G.validate(c._state));assert.ok(c._state.pieces.some(p=>p.hidden&&p.kind));let chosen=null;for(const p of c._state.pieces){for(let y=0;y<10&&!chosen;y++)for(let x=0;x<9&&!chosen;x++)if(G.legalAttempt(c._state.pieces,p.id,{x,y},'red'))chosen={id:p.id,to:{x,y}};if(chosen)break;}assert.ok(chosen);assert.equal(c.localMove(chosen.id,chosen.to),true);
+test('hotseat restores private dark pieces when leaving a public waiting room',async t=>{
+ t.mock.method(Online,'call',async()=>({cancelled:true}));
+ const privateState=G.newGame(()=>.4,'dark'),publicState={...privateState,pieces:G.displayPieces(privateState.pieces)},c=page(publicState);await c.startHotseat();assert.doesNotThrow(()=>G.validate(c._state));assert.ok(c._state.pieces.some(p=>p.hidden&&p.kind));let chosen=null;for(const p of c._state.pieces){for(let y=0;y<10&&!chosen;y++)for(let x=0;x<9&&!chosen;x++)if(G.legalAttempt(c._state.pieces,p.id,{x,y},'red'))chosen={id:p.id,to:{x,y}};if(chosen)break;}assert.ok(chosen);assert.equal(c.localMove(chosen.id,chosen.to),true);
 });
 
 test('hotseat mode lets both sides move manually and never schedules AI',async()=>{
