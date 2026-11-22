@@ -2,6 +2,18 @@ const FX=require('./battle-effects');
 // Presentation-only replacement layer. Game state, hit boxes and timers stay in the controller.
 const meta=require('./ui-v2-meta');
 const VARIANT_NAMES={dark:'暗棋',classic:'经典象棋',jieqi:'揭棋',fusion:'合棋'};
+function winRateFill(ctx,rate,y){
+ if(rate===null)return '#826048';
+ if(rate<30)return '#8d572b';
+ if(rate<50)return '#627482';
+ if(rate<70)return '#a56c00';
+ const diamond=ctx.createLinearGradient(0,y-11,0,y+11);
+ diamond.addColorStop(0,'#16688f');
+ diamond.addColorStop(.42,'#078eb2');
+ diamond.addColorStop(.56,'#186c9c');
+ diamond.addColorStop(1,'#253b82');
+ return diamond;
+}
 const TYPES={'帥':'general','帅':'general','將':'general','将':'general','仕':'advisor','士':'advisor','相':'elephant','象':'elephant','車':'rook','车':'rook','俥':'rook','馬':'horse','马':'horse','傌':'horse','炮':'cannon','砲':'cannon','兵':'pawn','卒':'pawn'};
 const BUTTONS={'简易 · 菜就多练局':'002','普通 · 不服就干场':'003','困难 · 棋王修罗场':'004','暂停':'005','悔棋':'006','翻转':'007','重开':'008','更多':'009','表情':'010','查看隐私保护指引':'011','取消等待':'014','取消匹配':'014','收起表情':'015','查看棋局':'017','返回首页':'018'};
 function install(Renderer){const p=Renderer.prototype;
@@ -145,8 +157,9 @@ function install(Renderer){const p=Renderer.prototype;
  const previousBattleButton=p.button;
  p.button=function(label,x,y,w,h,action,primary){const boxes={'暂停':[32,99,147,81,28],'悔棋':[39,1381,195,106,34],'翻转':[243,1381,185,106,34],'重开':[438,1381,187,106,34],'更多':[635,1381,192,106,34],'表情':[661,1172,168,72,28]};
  const waitingButton=['waiting_button',[0,0,621,112]];
- if(this.runtime.scene==='game'&&['推理','暂停'].includes(label)&&this.pauseFrameArt(x,y,w,h)){this.pauseLabel(label,x,y,w,h);this.targets.push({x,y,w,h,action});return;}
- if(this.runtime.scene==='game'&&label==='推理'&&this.battleArt([0,0,147,81],x,y,w,h,28,null,'inference_button')){this.pauseLabel(label,x,y,w,h);this.targets.push({x,y,w,h,action});return;}
+ const inferenceFrame=label==='推理'||label==='关闭';
+ if(this.runtime.scene==='game'&&(inferenceFrame||label==='暂停')&&this.pauseFrameArt(x,y,w,h)){this.pauseLabel(label,x,y,w,h);this.targets.push({x,y,w,h,action});return;}
+ if(this.runtime.scene==='game'&&inferenceFrame&&this.battleArt([0,0,147,81],x,y,w,h,28,null,'inference_button')){this.pauseLabel(label,x,y,w,h);this.targets.push({x,y,w,h,action});return;}
  if(this.runtime.scene==='game'&&['撤回一步','重置推理','退出推理','取消选择'].includes(label)&&this.pauseFrameArt(x,y,w,h)){this.pauseLabel(label,x,y,w,h);this.targets.push({x,y,w,h,action});return;}
  const modalArt={'收起表情':['extra_buttons',[0,0,269,80]],'继续对局':['extra_buttons',[0,85,578,112]],'邀请微信好友':waitingButton,'面对面模式':waitingButton,'取消等待':waitingButton,'取消匹配':waitingButton,'对局设置':waitingButton,'再来一局':['result_reference',[120,827,625,112]],'查看棋局':['result_reference',[124,951,298,101]],'返回首页':['result_reference',[443,951,298,101]]}[label];
  if(this.runtime.scene==='game'&&modalArt&&this.battleArt(modalArt[1],x,y,w,h,modalArt[1][3]/2,null,modalArt[0])){if(['邀请微信好友','面对面模式','取消等待','取消匹配','对局设置'].includes(label))this.text(label,x+w/2,y+h/2,Math.min(17,w/(Array.from(label).length+2)),'#65300c','center',true);this.targets.push({x,y,w,h,action});return;}
@@ -193,14 +206,15 @@ function install(Renderer){const p=Renderer.prototype;
   const y=Math.max(this.top+60,(this.height-192)/2),close=()=>controller.closePlayerStats();
   const name=Array.from(stats.name||'玩家'),heading=name.length>13?name.slice(0,13).join('')+'…':name.join('');
   this.overlay('rgba(47,36,28,.36)');
-  this.card(40,y,295,192,'#fff8e8','#ebc477');
+  this.card(40,y,295,192,'rgba(255,248,232,.76)','#ebc477');
   this.text(heading,187.5,y+26,19,'#61320f','center',true);
   this.text(VARIANT_NAMES[stats.variant]+' · 对局战绩',187.5,y+51,13,'#826048','center');
   if(stats.status==='ready'){
-   const rate=stats.games?Number((stats.wins*100/stats.games).toFixed(1))+'%':'—';
-   this.card(57,y+68,124,63,'#f8ead1');this.card(194,y+68,124,63,'#f8ead1');
-   this.text(stats.games,119,y+87,23,'#885322','center',true);this.text('对局数',119,y+113,13,'#725539','center');
-   this.text(rate,256,y+87,23,'#885322','center',true);this.text('胜率',256,y+113,13,'#725539','center');
+   const rate=stats.games?Number((stats.wins*100/stats.games).toFixed(1)):null;
+   const tileFill='rgba(248,234,209,.58)';
+   this.card(57,y+68,124,63,tileFill);this.card(194,y+68,124,63,tileFill);
+   this.text(stats.games,119,y+87,23,'#000000','center',true);this.text('对局数',119,y+113,13,'#725539','center');
+   this.text(rate===null?'—':rate+'%',256,y+87,23,winRateFill(this.ctx,rate,y+87),'center',true);this.text('胜率',256,y+113,13,'#725539','center');
   }else this.text(stats.status==='error'?'战绩暂时无法读取':'正在读取战绩…',187.5,y+99,15,'#826048','center');
   if(stats.status==='error'){
    this.button('关闭',62,y+144,115,34,close);
