@@ -173,8 +173,9 @@ test('stats paints translucent cards, ranks the displayed rate, and matches the 
   r.pauseFrameArt=()=>false;
   const artwork=[];
   r.battleArt=(box,x,y,w,h,radius,blank,key)=>{artwork.push({key,frame:[x,y,w,h]});return key==='inference_button';};
-  r.playerStatsCard(controller,{...stats,games:0,wins:0});
+  r.playerStatsCard(controller,{...stats,source:'local',games:0,wins:0});
   a.deepEqual(labels.find(text=>text.label==='—'),{label:'—',fill:'#826048'});
+  a.ok(labels.some(text=>text.label==='暗棋 · 本机战绩'));
   r.playerStatsCard(controller,errorStats);
   a.deepEqual(artwork,[singleFrame,closeFrame,retryFrame].map(frame=>({key:'inference_button',frame})));
  }finally{delete global.wx;delete global.requestAnimationFrame;delete global.cancelAnimationFrame;}

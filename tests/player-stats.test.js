@@ -107,32 +107,78 @@ test('a simulated fallback records consecutive rematches once for its owner and 
  assert.deepEqual(counts(await roomStats(server,'host',realRoom,'black')),[0,0]);
 });
 
-test('a simulated result is saved before upload and retried without duplicating the round',async t=>{
- const storage=new Map(),attempts=[];
+test('a simulated account shares completed results across players, with separate totals for each variant',async t=>{
+ const opponent=roster.forNickname(roster.names[0]);
+ t.mock.method(roster,'pick',()=>opponent);
+ const server=cloudGame();
+ await register(server,'host');await register(server,'guest');
+ async function match(user,variant){
+  const queued=await server.call(user,{action:'match',variant});
+  const {simulated}=await server.call(user,{action:'cancel',roomId:queued.roomId,rev:queued.rev,simulate:true});
+  assert.equal(simulated.nickname,opponent.nickname);
+  return simulated.id;
+ }
+ const first=await match('host','classic'),second=await match('guest','classic');
+ const read=(user,simulationId)=>server.call(user,{action:'playerStats',simulationId,side:'black'});
+ const record=(user,simulationId,round,winner)=>server.call(user,{action:'recordSimulatedResult',simulationId,round,winner});
+ assert.deepEqual(counts(await read('host',first)),[0,0]);
+ const results=await Promise.all([record('host',first,1,'black'),record('guest',second,1,'red')]);
+ assert.ok(results.every(result=>result.ok));
+ assert.equal((await record('guest',second,2,null)).ok,true);
+ assert.deepEqual(counts(await read('host',first)),[3,1]);
+ assert.deepEqual(counts(await read('guest',second)),[3,1]);
+ assert.deepEqual(counts(await read('guest',await match('guest','dark'))),[0,0]);
+});
+
+test('simulated results are saved locally, uploaded once, and can bypass a rejected older simulation',async t=>{
+ const key='chess-pending-simulated-results';
+ const older={simulationId:'f'.repeat(32),round:1,winner:'red'};
+ const storage=new Map([[key,[older]]]),attempts=[];
  global.wx={getStorageSync:key=>storage.get(key),setStorageSync:(key,value)=>storage.set(key,structuredClone(value))};
  t.after(()=>delete global.wx);
  let offline=true;
  t.mock.method(Online,'call',async(action,result)=>{
   assert.equal(action,'recordSimulatedResult');attempts.push(result);
   if(offline)throw Error('offline');
+  if(result.simulationId===older.simulationId)throw Object.assign(Error('未找到拟真人对局'),{serverRejected:true});
   return {ok:true};
  });
- const c={...Controller,_simulatedMatch:{id:'a'.repeat(32),round:1,finished:false}};
- const finished={status:'ended',winner:'red'};
+ const opponent=roster.forNickname(roster.names[1]);
+ const c={...Controller,_fakeOpponent:opponent,_simulatedMatch:{id:'a'.repeat(32),round:1,finished:false},
+  _alive:true,_mode:'ai',data:{topSide:'black',topName:opponent.nickname},setData(patch){Object.assign(this.data,patch);}};
+ const finished={status:'ended',variant:'classic',winner:'red'};
+ c._state=finished;
  c.recordSimulatedStats(finished);c.recordSimulatedStats(finished);
  await assert.rejects(SimulatedStats.flush(),/offline/);
- assert.deepEqual([...storage.values()].flat(),[{simulationId:'a'.repeat(32),round:1,winner:'red'}]);
+ assert.deepEqual(storage.get(key).pending,[older,{simulationId:'a'.repeat(32),round:1,winner:'red'}]);
+ await c.showPlayerStats('black');
+ assert.deepEqual(counts(c.data.playerStats),[1,0]);
+ assert.equal(c.data.playerStats.source,'local');
+ assert.equal(c.data.playerStats.status,'ready');
+ c.closePlayerStats();
  offline=false;
- await SimulatedStats.flush();
- assert.deepEqual(attempts.map(result=>result.round),[1,1]);
- assert.deepEqual([...storage.values()].flat(),[]);
+ await assert.rejects(SimulatedStats.flush(),/未找到拟真人对局/);
+ assert.deepEqual(storage.get(key).pending,[older]);
  t.mock.timers.enable({apis:['Date','setTimeout'],now:1000});
  t.mock.method(Math,'random',()=>0);
- Object.assign(c,{_alive:true,_state:{...G.newGame(undefined,'classic'),...finished},_fakeOpponent:{nickname:'棋友'},_clock:{start(){}},
-  data:{},setData(patch){Object.assign(this.data,patch);},sync(){},toast(){},scheduleAI(){}});
+ Object.assign(c,{_state:{...G.newGame(undefined,'classic'),...finished},_clock:{start(){}},sync(){},toast(){},scheduleAI(){}});
  c.requestFake('restart');t.mock.timers.tick(1200);
  assert.deepEqual(c._simulatedMatch,{id:'a'.repeat(32),round:2,finished:false});
- c.recordSimulatedStats({status:'ended',winner:null});
- await SimulatedStats.flush();
- assert.deepEqual(attempts.map(result=>result.round),[1,1,2]);
+ c.recordSimulatedStats({...finished,winner:null});
+ await assert.rejects(SimulatedStats.flush(),/未找到拟真人对局/);
+ assert.deepEqual(attempts.filter(result=>result.simulationId===c._simulatedMatch.id).map(result=>result.round),[1,2]);
+ assert.deepEqual(storage.get(key).pending,[older]);
+ assert.deepEqual(storage.get(key).local.classic.opponents[opponent.nickname],{games:2,wins:0});
+
+ c._simulatedMatch={id:null,round:1,finished:false};
+ c.recordSimulatedStats({...finished,status:'playing',winner:null});
+ await c.showPlayerStats('black');
+ assert.deepEqual(counts(c.data.playerStats),[2,0]);
+ c.recordSimulatedStats({...finished,winner:'black'});
+ c.recordSimulatedStats({...finished,winner:'black'});
+ await c.showPlayerStats('black');
+ assert.deepEqual(counts(c.data.playerStats),[3,1]);
+ assert.equal(c.data.playerStats.source,'local');
+ assert.deepEqual(storage.get(key).pending,[older]);
+ assert.deepEqual(SimulatedStats.localTotals('dark',opponent.nickname),{games:0,wins:0});
 });

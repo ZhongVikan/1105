@@ -17,7 +17,15 @@ test('all 100 fake opponents have distinct packaged avatars shared by both roste
  }
  a.equal(avatars.size,100);
 });
-test('fallback enters hard local AI with its fixed avatar after cancellation',async t=>{approveCancel(t);const c={...Def,_alive:true,_mode:'online',_matchQueue:true,_room:{waiting:true,roomId:'r',rev:0},_token:0,_clock:{start(){}},data:{},setData(p){Object.assign(this.data,p)},sync(){},scheduleAI(){}};await c.activateFakeOpponent();a.equal(c._mode,'ai');a.equal(c._level,'hard');a.equal(c.data.waiting,false);a.ok(c._fakeOpponent.avatar);a.deepEqual(c._fakeOpponent,F.forNickname(c._fakeOpponent.nickname));});
+test('fallback starts a tracked local round with its fixed avatar when there is no cloud ticket',async t=>{
+ approveCancel(t);
+ const c={...Def,_alive:true,_mode:'online',_matchQueue:true,_room:{waiting:true,roomId:'r',rev:0},_token:0,_clock:{start(){}},
+  data:{},setData(p){Object.assign(this.data,p)},sync(){},scheduleAI(){}};
+ await c.activateFakeOpponent();
+ a.equal(c._mode,'ai');a.equal(c._level,'hard');a.equal(c.data.waiting,false);
+ a.ok(c._fakeOpponent.avatar);a.deepEqual(c._fakeOpponent,F.forNickname(c._fakeOpponent.nickname));
+ a.deepEqual(c._simulatedMatch,{id:null,round:1,finished:false});
+});
 test('a cloud-selected fake opponent shows its avatar and plays the first local move',async t=>{
  const opponent=F.forNickname(F.names[38]);
  approveCancel(t,{cancelled:true,simulated:{id:'a'.repeat(32),nickname:opponent.nickname}});
