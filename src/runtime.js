@@ -20,15 +20,30 @@ class Runtime {
  constructor(){
   this.variant='dark';this.scene='home';this.controller=null;this.returnScene='home';this.scroll=0;
   this.profile=wx.getStorageSync('chess-profile')||null;this.pendingRoom='';this._inviteRoom='';this._inviteBusy=false;this._invitePromptRoom='';this.hidden=false;
-  this.renderer=new Renderer(this);this.audio=new Audio();this.touch=null;this.authButton=null;this.loginBusy=false;
+  this.renderer=new Renderer(this);this.audio=new Audio();this.touch=null;this.authButton=null;this.feedbackButton=null;this.loginBusy=false;
  }
  start(){
   this.onStart=e=>this.touchStart(e);this.onMove=e=>this.touchMove(e);this.onEnd=e=>this.touchEnd(e);
   wx.onTouchStart(this.onStart);wx.onTouchMove(this.onMove);wx.onTouchEnd(this.onEnd);
   wx.onTouchCancel(()=>{this.touch=null;});
-  wx.onHide(()=>{this.hidden=true;this.audio.hide();this.renderer.stop();if(this.authButton)this.authButton.hide();if(this.controller)this.controller.onHide();});
-  wx.onShow(options=>{this.hidden=false;this.audio.refresh();this.renderer.resume();if(this.authButton)this.authButton.show();if(this.controller)this.controller.onShow();this.invite(options&&options.query);});
-  if(wx.onWindowResize)wx.onWindowResize(()=>{this.renderer.resize();if(this.scene==='profile'&&this.authButton)this.makeAuthButton();});
+  wx.onHide(()=>{
+   this.hidden=true;this.audio.hide();this.renderer.stop();
+   if(this.authButton)this.authButton.hide();
+   if(this.feedbackButton)this.feedbackButton.hide();
+   if(this.controller)this.controller.onHide();
+  });
+  wx.onShow(options=>{
+   this.hidden=false;this.audio.refresh();
+   if(this.authButton)this.authButton.show();
+   if(this.feedbackButton)this.feedbackButton.show();
+   else if(this.scene==='settings')this.syncFeedbackButton();
+   this.renderer.resume();if(this.controller)this.controller.onShow();this.invite(options&&options.query);
+  });
+  if(wx.onWindowResize)wx.onWindowResize(()=>{
+   this.renderer.resize();
+   if(this.scene==='profile'&&this.authButton)this.makeAuthButton();
+   if(this.scene==='settings')this.syncFeedbackButton();
+  });
   if(wx.showShareMenu)wx.showShareMenu({withShareTicket:true,menus:['shareAppMessage']});
   if(wx.onShareAppMessage)wx.onShareAppMessage(()=>this.shareInfo());
   this.renderer.resume();
@@ -53,11 +68,12 @@ class Runtime {
  enterInvite(){if(this._inviteBusy)return;if(!this.profile){this.open('profile');return;}const room=this.pendingRoom;if(!room)return;this._inviteBusy=true;Promise.resolve(this.startGame({mode:'online',room})).then(ok=>{if(ok)this.pendingRoom='';if(this._inviteRoom===room){this._inviteBusy=false;this._inviteRoom=ok?'':room;}}).catch(()=>{if(this._inviteRoom===room){this._inviteBusy=false;this._inviteRoom=room;}});}
  open(scene){
   if(scene==='rules')this.ruleVariant=this.controller?this.controller._state.variant:this.variant;
-  this.destroyAuthButton();this.returnScene=this.controller?'game':'home';this.scene=scene;this.scroll=0;this.invalidate();
+  this.destroyAuthButton();this.returnScene=this.controller?'game':'home';this.scene=scene;this.scroll=0;
+  this.syncFeedbackButton();this.invalidate();
   // Privacy permission is requested only by the visible profile button tap.
  }
- back(){this._pendingGame=null;this.destroyAuthButton();this.scene=this.controller?'game':'home';this.audio.refresh();this.invalidate();}
- home(){this._pendingGame=null;this._startingGame=null;this.destroyAuthButton();if(this.controller){this.controller.onUnload();this.controller=null;}this.scene='home';this.audio.refresh();this.invalidate();}
+ back(){this._pendingGame=null;this.destroyAuthButton();this.scene=this.controller?'game':'home';this.syncFeedbackButton();this.audio.refresh();this.invalidate();}
+ home(){this._pendingGame=null;this._startingGame=null;this.destroyAuthButton();if(this.controller){this.controller.onUnload();this.controller=null;}this.scene='home';this.syncFeedbackButton();this.audio.refresh();this.invalidate();}
  async startGame(options){
   options={variant:this.variant||'dark',...options};
   if(options.mode==='online'&&!config.cloudEnv){this.toast('真人对战还需配置云开发环境');return;}
@@ -71,12 +87,29 @@ class Runtime {
    this.destroyAuthButton();if(this.controller)this.controller.onUnload();
    const c={...definition,data:JSON.parse(JSON.stringify(definition.data)),runtime:this};
    c.setData=patch=>{if(patch.showResult&&!c.data.showResult)c._resultShownAt=Date.now();const changed=Object.keys(patch).some(k=>c.data[k]!==patch[k]);Object.assign(c.data,patch);if(changed&&this.controller===c)this.invalidate();};
-   this.controller=c;this.scene='game';this.invalidate();
+   this.controller=c;this.scene='game';this.syncFeedbackButton();this.invalidate();
    try{await c.onLoad(options);}catch(e){if(this.controller===c){this.home();this.toast('游戏启动失败：'+(e.message||e.errMsg||'请重试'));}return false;}
    return this.controller===c&&(options.mode!=='online'||!!c._room);
   }finally{if(this._startingGame===start)this._startingGame=null;}
  }
  toggleSetting(key){const s=S.settings();s[key]=!s[key];S.setSettings(s);this.audio.refresh();this.invalidate();}
+ syncFeedbackButton(){
+  if(this.feedbackButton){this.feedbackButton.destroy();this.feedbackButton=null;}
+  if(this.scene!=='settings'||this.hidden||typeof wx.createFeedbackButton!=='function')return;
+  const {scale,offsetX}=this.renderer;
+  const {x,y,w,h}=this.renderer.settingsFeedbackRect();
+  let button;
+  try{
+   // WeChat opens the feedback page only when its native button is tapped.
+   button=wx.createFeedbackButton({type:'text',text:'留言反馈',style:{
+    left:x*scale+offsetX,top:y*scale,width:w*scale,height:h*scale,lineHeight:h*scale,
+    fontSize:18*scale,textAlign:'center',backgroundColor:'rgba(0,0,0,0)',color:'#522309',borderWidth:0,
+   }});
+   if(!button)return;
+   button.onTap(()=>this.audio.effect('click'));
+   button.show();this.feedbackButton=button;
+  }catch(error){if(button)button.destroy();}
+ }
  shareInfo(){return this.controller&&(this.controller.data.roomId||(this.controller._room&&this.controller._room.roomId))?this.controller.onShareAppMessage():{title:'暗棋大乱斗 · 真假难辨，步步为营',query:''};}
  share(){const info=this.shareInfo();if(this.controller&&this.controller._mode==='online'&&this.controller.data.waiting&&!info.query){this.toast('房间创建中，请稍候');return false;}if(wx.shareAppMessage){wx.shareAppMessage(info);return true;}this.toast('当前环境不支持分享');return false;}
  destroyAuthButton(){if(this.authButton){this.authButton.destroy();this.authButton=null;}}

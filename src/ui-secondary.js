@@ -1,6 +1,7 @@
 // Reference artwork is drawn as independent controls; state stays in runtime.
 const S=require('../utils/storage'),rules=require('./rules');
 const names={dark:'暗棋',classic:'经典象棋',jieqi:'揭棋',fusion:'合棋'};
+const feedbackBox=[23,1254,818,126];
 function install(Renderer){const p=Renderer.prototype,draw=p.draw;
  p.secondaryLayout=function(){const k=Math.min(375/864,(this.height-this.bottom-this.top+32)/1430);return {k,x:(375-864*k)/2,y:this.top-32};};
  p.secondaryRect=function(x,y,w,h){const a=this.secondaryLayout();return {x:a.x+x*a.k,y:a.y+y*a.k,w:w*a.k,h:h*a.k};};
@@ -11,7 +12,25 @@ function install(Renderer){const p=Renderer.prototype,draw=p.draw;
  p.draw=function(now){if(!['difficulty','rules','settings','profile'].includes(this.runtime.scene))return draw.call(this,now);this._targetState={scene:this.runtime.scene,waiting:false};const c=this.ctx;c.setTransform(this.dpr*this.scale,0,0,this.dpr*this.scale,this.offsetX*this.dpr,0);c.clearRect(0,0,375,this.height);if(this.runtime.scene==='rules'&&this.uiImage){if(!this._rulesBackdrop){this._rulesBackdrop=wx.createCanvas();this._rulesBackdrop.width=this.canvas.width;this._rulesBackdrop.height=this.canvas.height;const q=this._rulesBackdrop.getContext('2d');q.setTransform(this.dpr*this.scale,0,0,this.dpr*this.scale,0,0);const bg=Object.create(this);bg.ctx=q;this.uiArt.call(bg,'background',0,0,375,this.height);q.fillStyle='rgba(255,246,224,.38)';q.fillRect(0,0,375,this.height);}c.drawImage(this._rulesBackdrop,0,0,375, this.height);}else{if(this.uiArt&&this.uiImage)this.uiArt('background',0,0,375,this.height);c.fillStyle='rgba(255,246,224,.38)';c.fillRect(0,0,375,this.height);}this.targets=[];({difficulty:()=>this.difficulty(),rules:()=>this.ruleScene(),settings:()=>this.settings(),profile:()=>this.profileScene(now)})[this.runtime.scene]();this.secondaryBack();};
  p.difficulty=function(){this.secondaryText((names[this.runtime.variant||'dark'])+' · 选择难度',432,185,55,'#502206',true,'center');this.secondaryText('—  ◆  —',432,240,30,'#ca9337',false,'center');['easy','normal','hard'].forEach((level,i)=>this.secondarySprite('difficulty',[68,383+i*240,732,200],[68,330+i*240,732,200],98,()=>this.runtime.startGame({mode:'ai',level})));
  this.secondaryPanel(44,1070,776,157);const texts={fusion:'明棋开局，不限制合棋次数和场上数量。选中棋子后，金色双环标出可合棋目标。',classic:'经典象棋全明子，士守九宫、象不过河。三档 AI 均使用合法走法，困难模式拥有更高的搜索预算。',jieqi:'双方各自洗牌，没有卧底；不能吃己方棋子。暗子走完揭开，AI 不读取隐藏身份。',dark:'暗子身份对双方未知。AI 只根据公开棋面判断，困难模式拥有更高的搜索预算。'},b=this.secondaryRect(88,1110,690,100);this.wrap(texts[this.runtime.variant||'dark'],b.x,b.y,b.w,29*this.secondaryLayout().k,'#796046',45*this.secondaryLayout().k);};
- p.settings=function(){this.secondaryPanel(189.5,130,485,125);this.secondaryText('声音设置',432,194,54,'#522309',true,'center');this.secondaryPanel(23,270,818,958);const settings=S.settings();['sound','music','effects','voice'].forEach((key,i)=>{const y=336+i*168;this.secondarySprite('settings',[62,386+i*168,740,152],[62,y,740,152],42,()=>this.runtime.toggleSetting(key));this.secondarySprite('settings',settings[key]?[624,420,147,80]:[624,589,147,80],[624,y+34,147,80],40);});const b=this.secondaryRect(74,1080,710,130);this.wrap('关闭全部声音后，背景音乐、操作音效、中文播报与表情语音均静音。',b.x,b.y,b.w,29*this.secondaryLayout().k,'#997652',45*this.secondaryLayout().k);};
+ p.settingsFeedbackRect=function(){return this.secondaryRect(...feedbackBox);};
+ p.settings=function(){
+  this.secondaryPanel(189.5,130,485,125);this.secondaryText('设置',432,194,54,'#522309',true,'center');
+  this.secondaryPanel(23,270,818,958);
+  const settings=S.settings();
+  ['sound','music','effects','voice'].forEach((key,i)=>{
+   const y=336+i*168;
+   this.secondarySprite('settings',[62,386+i*168,740,152],[62,y,740,152],42,()=>this.runtime.toggleSetting(key));
+   this.secondarySprite('settings',settings[key]?[624,420,147,80]:[624,589,147,80],[624,y+34,147,80],40);
+  });
+  const b=this.secondaryRect(74,1080,710,130),k=this.secondaryLayout().k;
+  this.wrap('关闭全部声音后，背景音乐、操作音效、中文播报与表情语音均静音。',b.x,b.y,b.w,29*k,'#997652',45*k);
+  this.secondaryPanel(...feedbackBox);
+  if(!this.runtime.feedbackButton){
+   const {x,y,w,h}=this.settingsFeedbackRect();
+   this.text('留言反馈',x+w/2,y+h/2,18,'#522309','center');
+   this.targets.push({x,y,w,h,action:()=>this.runtime.toast('请在手机微信中使用留言反馈')});
+  }
+ };
  p.profileButtonRect=function(){return this.secondaryRect(93,798,680,145);};
  // Follow the photographed panel silhouette instead of a rectangular crop.
  p.profilePanelArt=function(){const im=this.uiImage('secondary_profile');if(!im)return;const b=this.secondaryRect(34,144,800,1102),c=this.ctx;c.save();c.translate(b.x,b.y);c.scale(b.w/800,b.h/1102);c.translate(-34,-201);c.beginPath();c.moveTo(140,204);c.lineTo(716,204);c.bezierCurveTo(768,204,803,234,806,285);c.lineTo(829,1200);c.bezierCurveTo(830,1254,799,1297,749,1297);c.lineTo(117,1297);c.bezierCurveTo(64,1297,35,1262,35,1207);c.lineTo(56,287);c.bezierCurveTo(57,239,89,205,140,204);c.closePath();c.clip();c.drawImage(im,0,0);c.restore();};
