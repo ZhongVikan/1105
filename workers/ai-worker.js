@@ -1,9 +1,9 @@
 // Single Worker entry for local AI search. The main thread owns UI/input;
 // this file owns one search at a time and never creates another Worker.
-const AI=require('../utils/ai'),FusionAI=require('../utils/fusion-ai'),Repetition=require('../utils/repetition'),R=require('../utils/rules-core');
+const AI=require('./shared/ai'),FusionAI=require('./shared/fusion-ai'),Repetition=require('./shared/repetition'),R=require('./shared/rules-core');
 
 const channel=typeof worker!=='undefined'?worker:typeof wx!=='undefined'?wx:null;
-const cancelled=new Set();
+const searches=new Map();
 const send=value=>{if(channel&&typeof channel.postMessage==='function')channel.postMessage(value);};
 function avoidPerpetual(state,history,move){
  const piece=state.pieces.find(p=>p.id===move.id);if(!piece||piece.hidden)return true;
@@ -13,17 +13,18 @@ function avoidPerpetual(state,history,move){
 }
 async function choose(message){
  const {id,kind,level,pieces,state,history=[]}=message;
- const cancel=()=>cancelled.has(id);
+ const search={cancelled:false};searches.set(id,search);
+ const cancel=()=>search.cancelled;
  try{
   const result=kind==='fusion'
    ?await FusionAI.choose(state,level,{cancel})
    :await AI.choose(pieces,'black',level,{history,cancel,allowMove:move=>avoidPerpetual(state,history,move),yieldFrame:()=>new Promise(resolve=>setTimeout(resolve,0))});
   send({type:'result',id,move:result,cancelled:cancel()});
- }catch(error){send({type:'error',id,message:String(error&&error.message||error)});}finally{cancelled.delete(id);}
+ }catch(error){send({type:'error',id,message:String(error&&error.message||error)});}finally{searches.delete(id);}
 }
 function onMessage(message){
  if(!message||typeof message!=='object')return;
- if(message.type==='cancel'){cancelled.add(message.id);return;}
+ if(message.type==='cancel'){const search=searches.get(message.id);if(search)search.cancelled=true;return;}
  if(message.type==='choose')choose(message);
 }
 if(channel&&typeof channel.onMessage==='function')channel.onMessage(onMessage);
