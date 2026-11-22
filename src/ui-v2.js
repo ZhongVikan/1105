@@ -7,13 +7,18 @@ function winRateFill(ctx,rate,y){
  if(rate===null)return '#826048';
  if(rate<30)return '#8d572b';
  if(rate<50)return '#627482';
- if(rate<70)return '#a56c00';
- const diamond=ctx.createLinearGradient(0,y-11,0,y+11);
- diamond.addColorStop(0,'#16688f');
- diamond.addColorStop(.42,'#078eb2');
- diamond.addColorStop(.56,'#186c9c');
- diamond.addColorStop(1,'#253b82');
- return diamond;
+ const fill=ctx.createLinearGradient(0,y-11,0,y+11);
+ if(rate<70){
+  fill.addColorStop(0,'#385b75');
+  fill.addColorStop(.42,'#6195ab');
+  fill.addColorStop(1,'#365b74');
+  return fill;
+ }
+ fill.addColorStop(0,'#16688f');
+ fill.addColorStop(.42,'#078eb2');
+ fill.addColorStop(.56,'#186c9c');
+ fill.addColorStop(1,'#253b82');
+ return fill;
 }
 const TYPES={'帥':'general','帅':'general','將':'general','将':'general','仕':'advisor','士':'advisor','相':'elephant','象':'elephant','車':'rook','车':'rook','俥':'rook','馬':'horse','马':'horse','傌':'horse','炮':'cannon','砲':'cannon','兵':'pawn','卒':'pawn'};
 const BUTTONS={'简易 · 菜就多练局':'002','普通 · 不服就干场':'003','困难 · 棋王修罗场':'004','暂停':'005','悔棋':'006','翻转':'007','重开':'008','更多':'009','表情':'010','查看隐私保护指引':'011','取消等待':'014','取消匹配':'014','收起表情':'015','查看棋局':'017','返回首页':'018'};
@@ -158,7 +163,7 @@ function install(Renderer){const p=Renderer.prototype;
  const previousBattleButton=p.button;
  p.button=function(label,x,y,w,h,action,primary){const boxes={'暂停':[32,99,147,81,28],'悔棋':[39,1381,195,106,34],'翻转':[243,1381,185,106,34],'重开':[438,1381,187,106,34],'更多':[635,1381,192,106,34],'表情':[661,1172,168,72,28]};
  const waitingButton=['waiting_button',[0,0,621,112]];
- const inferenceFrame=label==='推理'||label==='关闭';
+ const inferenceFrame=label==='推理'||label==='关闭'||label==='重试';
  if(this.runtime.scene==='game'&&(inferenceFrame||label==='暂停')&&this.pauseFrameArt(x,y,w,h)){this.pauseLabel(label,x,y,w,h);this.targets.push({x,y,w,h,action});return;}
  if(this.runtime.scene==='game'&&inferenceFrame&&this.battleArt(INFERENCE_FRAME,x,y,w,h,28,null,'inference_button')){this.pauseLabel(label,x,y,w,h);this.targets.push({x,y,w,h,action});return;}
  if(this.runtime.scene==='game'&&['撤回一步','重置推理','退出推理','取消选择'].includes(label)&&this.pauseFrameArt(x,y,w,h)){this.pauseLabel(label,x,y,w,h);this.targets.push({x,y,w,h,action});return;}
@@ -217,10 +222,10 @@ function install(Renderer){const p=Renderer.prototype;
    this.text(stats.games,119,y+87,23,'#000000','center',true);this.text('对局数',119,y+113,13,'#725539','center');
    this.text(rate===null?'—':rate+'%',256,y+87,23,winRateFill(this.ctx,rate,y+87),'center',true);this.text('胜率',256,y+113,13,'#725539','center');
   }else this.text(stats.status==='error'?'战绩暂时无法读取':'正在读取战绩…',187.5,y+99,15,'#826048','center');
-  const failed=stats.status==='error',closeHeight=40,closeWidth=closeHeight*INFERENCE_FRAME[2]/INFERENCE_FRAME[3];
+  const failed=stats.status==='error',buttonHeight=40,buttonWidth=buttonHeight*INFERENCE_FRAME[2]/INFERENCE_FRAME[3],buttonY=y+141;
   const closeCenter=failed?119.5:187.5;
-  this.button('关闭',closeCenter-closeWidth/2,y+141,closeWidth,closeHeight,close,!failed);
-  if(failed)this.button('重试',198,y+144,115,34,()=>controller.showPlayerStats(stats.side),true);
+  this.button('关闭',closeCenter-buttonWidth/2,buttonY,buttonWidth,buttonHeight,close,true);
+  if(failed)this.button('重试',255.5-buttonWidth/2,buttonY,buttonWidth,buttonHeight,()=>controller.showPlayerStats(stats.side),true);
  };
  p.inferenceAssumptionSheet=function(controller){
  const opts=this.runtime.controller.data.inferenceAssumptionOptions||[],rows=Math.ceil(opts.length/2),h=86+rows*38+48,y=Math.max(this.top+18,(this.height-h)/2);this.overlay('rgba(47,36,28,.74)');this.card(27,y,321,h,'rgba(255,247,231,.78)','#e6c58d');this.text('选择假设身份',187.5,y+30,20,'#74512d','center',true);this.text('仅用于推理，不代表正式棋局已揭示',187.5,y+57,11,'#8f7354','center');opts.forEach((o,i)=>{const x=44+(i%2)*145,yy=y+78+Math.floor(i/2)*38;this.card(x,yy,133,32,'#fff1cf','#d3a05a');this.text(o.label,x+66.5,yy+16,14,o.side==='red'?'#c52d21':'#252525','center',true);this.targets.push({x,y:yy,w:133,h:32,action:()=>controller.chooseInferenceAssumption(o.side,o.kind)});});this.button('取消选择',135,y+h-48,105,46,()=>controller.cancelInferenceAssumption(),true);
