@@ -130,6 +130,10 @@ test('stats paints translucent cards, ranks the displayed rate, and reuses the i
  let closed=0;
  const controller={closePlayerStats(){closed++;},showPlayerStats(){}};
  const stats={status:'ready',variant:'dark',name:'棋友',games:10000};
+ const checkCloseFrame=([x,y,w,h],center)=>{
+  a.ok(Math.abs(w/h-147/81)<1e-10);
+  a.ok(Math.abs(x+w/2-center)<1e-10);
+ };
  try{
   for(const [wins,rate,fill] of [[2990,'29.9%','#8d572b'],[2996,'30%','#627482'],[4990,'49.9%','#627482'],[5000,'50%','#a56c00'],[6990,'69.9%','#a56c00'],[7000,'70%',diamond]]){
    r.playerStatsCard(controller,{...stats,wins});
@@ -137,12 +141,16 @@ test('stats paints translucent cards, ranks the displayed rate, and reuses the i
    a.deepEqual(labels.find(text=>text.label===stats.games),{label:stats.games,fill:'#000000'});
    a.deepEqual(paints.splice(0),['rgba(255,248,232,.76)','rgba(248,234,209,.58)','rgba(248,234,209,.58)']);
    a.ok(labels.some(text=>text.label==='关闭'));labels.length=0;
+   checkCloseFrame(frames.at(-1),187.5);
    r.targets[0].action();
   }
   a.equal(closed,6);a.equal(frames.length,6);
+  r.playerStatsCard(controller,{...stats,status:'error'});
+  checkCloseFrame(frames.at(-1),119.5);a.equal(r.targets.length,2);
+  r.targets[0].action();a.equal(closed,7);
   r.pauseFrameArt=()=>false;
   const artwork=[];
-  r.battleArt=(box,x,y,w,h,radius,blank,key)=>{artwork.push(key);return key==='inference_button';};
+  r.battleArt=(box,x,y,w,h,radius,blank,key)=>{artwork.push(key);checkCloseFrame([x,y,w,h],187.5);return key==='inference_button';};
   r.playerStatsCard(controller,{...stats,games:0,wins:0});
   a.deepEqual(labels.find(text=>text.label==='—'),{label:'—',fill:'#826048'});
   a.deepEqual(artwork,['inference_button']);
