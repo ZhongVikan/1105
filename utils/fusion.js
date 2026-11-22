@@ -1,5 +1,5 @@
 // 合棋 V1.1: pure state transitions shared by client, AI and cloud.
-const R=require('./rules-core'),C=require('./coordinates');
+const R=require('./rules-core'),C=require('./coordinates'),NoCapture=require('./no-capture');
 const names={rider:'骑',gunner:'铳',formation:'阵',xiao:'骁',bombard:'轰',guard_king:'御',mounted_king:'驭',chariot_king:'巡'};
 const pairs={'horse+pawn':'rider','cannon+pawn':'gunner','elephant+pawn':'formation','horse+rook':'xiao','cannon+rook':'bombard','advisor+general':'guard_king','general+horse':'mounted_king','general+rook':'chariot_king'};
 const at=(ps,t)=>ps.find(p=>p.x===t.x&&p.y===t.y),home=(s,y)=>s==='red'?y>=5:y<=4;
@@ -49,7 +49,7 @@ function complete(s,actor,event,adjudicate){const n={...s,turn:R.opposite(actor)
  if(adjudicate){if(!actions(n,true).length)return {ok:true,state:{...n,status:'ended',winner:actor,reason:check?'checkmate':'stalemate',motif:check?'将死':'困毙'},event:check?'checkmate':'stalemate'};
  const entry={key:key(n),actor,check};n.repetition=[...((s.noProgress===0||s.lastMove&&s.lastMove.fusionType)?[]:(s.repetition||[])),entry];const matches=n.repetition.map((r,i)=>r.key===entry.key?i:-1).filter(i=>i>=0);
  if(matches.length>=3){const cycle=n.repetition.slice(matches[matches.length-3]+1);const offenders=['red','black'].filter(side=>{const turns=cycle.filter(r=>r.actor===side);return turns.length&&turns.every(r=>r.check);});return {ok:true,state:{...n,status:'ended',winner:offenders.length===1?R.opposite(offenders[0]):null,reason:offenders.length===1?'perpetual-check':'repetition',motif:offenders.length===1?'长将判负':'三次重复和棋'},event:'end'};}
- if(n.noProgress>=120)return {ok:true,state:{...n,status:'ended',winner:null,reason:'no-progress',motif:'无进展和棋'},event:'end'};
+ return NoCapture.settle(n,check?'check':event,event);
  }
  return {ok:true,state:n,event:check?'check':event};}
 function move(s,id,to,adjudicate=true){if(s.status!=='playing')return {ok:false,message:'对局已结束'};
