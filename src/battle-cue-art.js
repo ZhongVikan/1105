@@ -119,24 +119,25 @@ function captureImpact(renderer,x,y,age){
  ctx.restore();
 }
 
-function checkHalo(renderer,x,y,alpha,phase){
+function redHalo(renderer,x,y,alpha,phase,radius=37){
  if(alpha<=0)return;
  const ctx=renderer.ctx,detail=renderer.fxQuality!==0;
  ctx.save();
  if(detail){
-  const radius=58+8*phase;
+  const lightRadius=radius+21+8*phase;
   ctx.globalAlpha=alpha*(.82-.45*phase);
-  ctx.drawImage(preload(renderer).redBloom,x-radius,y-radius,2*radius,2*radius);
+  ctx.drawImage(preload(renderer).redBloom,x-lightRadius,y-lightRadius,2*lightRadius,2*lightRadius);
  }
  ctx.lineCap='round';
- ctx.beginPath();ctx.arc(x,y,37,0,Math.PI*2);
+ ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);
  ctx.strokeStyle='#831d19';ctx.lineWidth=4;ctx.globalAlpha=.82*alpha;ctx.stroke();
  ctx.strokeStyle='#ff744d';ctx.lineWidth=1.9;ctx.globalAlpha=.95*alpha;ctx.stroke();
  if(detail){
-  arcs(ctx,x,y,44+4*phase,-1.24+.85*phase,1.45);
+  arcs(ctx,x,y,radius+7+4*phase,-1.24+.85*phase,1.45);
   ctx.strokeStyle='#ffbd82';ctx.lineWidth=2.2;ctx.globalAlpha=.91*alpha;ctx.stroke();
   ctx.fillStyle='#ffe6ac';
-  diamond(ctx,x-43-3*phase,y,3.3,5);diamond(ctx,x+43+3*phase,y,3.3,5);
+  const offset=radius+6+3*phase;
+  diamond(ctx,x-offset,y,3.3,5);diamond(ctx,x+offset,y,3.3,5);
  }
  ctx.restore();
 }
@@ -158,4 +159,4 @@ function checkTrails(renderer,x,y,width,alpha,phase){
  ctx.restore();
 }
 
-module.exports={preload,drawLabel,captureImpact,checkHalo,checkTrails};
+module.exports={preload,drawLabel,captureImpact,redHalo,checkTrails};

@@ -21,6 +21,32 @@ test('capture-check anchors each cue and plays one sound at impact',t=>{
  a.deepEqual(events,['check']);
  c.clearPresentation();
 });
+test('the shared red halo follows captured pieces and the checked general at their own positions',t=>{
+ timers(t);
+ const art=require('../src/battle-cue-art'),coordinates=require('../utils/coordinates'),centers=[];
+ t.mock.method(art,'redHalo',(renderer,x,y,alpha,phase,radius=37)=>{if(alpha>0)centers.push([x,y,radius]);});
+ t.mock.method(art,'drawLabel',()=>{});
+ const ctx=new Proxy({},{get:(object,key)=>key in object?object[key]:()=>{}});
+ const renderer={ctx,fxQuality:0,boardPoint:coordinates.orient};
+ const cases=[
+  {scenario:'capture',id:'r',to:{x:2,y:4},flipped:false,expected:[[2,4,42]]},
+  {scenario:'captureCheck',id:'r',to:{x:3,y:3},flipped:false,expected:[[3,3,42],[3,0,37]]},
+  {scenario:'double',id:'bomb',to:{x:0,y:3},flipped:true,expected:[[8,6,42],[8,4,42]]},
+  {scenario:'fusion',id:'h',to:{x:3,y:5},flipped:false,expected:[]},
+ ];
+ for(const {scenario,id,to,flipped,expected} of cases){
+  const {c}=page(scenarios[scenario]());
+  a.ok(c.localMove(id,to));
+  const {at,timings}=c.motion;
+  FX.over(renderer,c.motion,timings.contact-1,flipped);
+  a.deepEqual(centers,[]);
+  const elapsed=timings.impact+100;
+  FX.over(renderer,c.motion,elapsed,flipped);
+  FX.drawCues(renderer,c._battle.cues,at+elapsed,flipped,{board:{x:0,y:0,w:720,h:800},topSide:'black',topCheckY:0,bottomCheckY:800});
+  a.deepEqual(centers.splice(0),expected);
+  c.clearPresentation();
+ }
+});
 test('fusion timeout cancels pending fusion/capture sounds and cannot replay after flip/poll',t=>{timers(t);const {c,heard,events}=page(scenarios.royal());a.ok(c.localMove('a',{x:4,y:9}));c._clock.deadline=Date.now()-1;c.tick();a.equal(c._state.reason,'timeout');a.equal(c.motion,null);a.equal(c._battle.events.length,0);t.mock.timers.tick(2500);a.deepEqual(events,['timeout']);a.equal(heard.includes('drop'),false);a.equal(heard.includes('44_侍卫护驾.wav'),false);c.flip();c.sync('timeout');t.mock.timers.tick(1000);a.deepEqual(events,['timeout']);c.clearPresentation();});
 test('manual pause freezes visual time and sound; resume keeps sequence without extending game clock separately',t=>{timers(t);const {c,events}=page(scenarios.capture());c._mode='ai';a.ok(c.localMove('r',{x:2,y:4}));t.mock.timers.tick(60);c.togglePause();const frozen=c._battle.pausedAt,left=c._clock.remaining();t.mock.timers.tick(2000);a.equal(c._clock.remaining(),left);a.equal(c._battle.advance(Date.now()).at,1000);a.deepEqual(events,[]);c.togglePause();a.equal(c._battle.pausedAt,null);a.equal(c.motion.at,3000);t.mock.timers.tick(1000);a.deepEqual(events,['capture']);c.clearPresentation();});
 test('background, unload and restart clear all transient state and old audio timers',t=>{timers(t);const {c,events}=page(scenarios.capture());c._audio.hide=()=>{};c._audio.destroy=()=>{};c.localMove('r',{x:2,y:4});c.onHide();a.equal(c.motion,null);a.equal(c._battle.active(),false);t.mock.timers.tick(800);a.deepEqual(events,[]);c._hidden=false;c._state=scenarios.walk();c._clock.start();c.sync();a.equal(c._battle.active(),false);c.onUnload();a.equal(c._battleSounds.length,0);});
