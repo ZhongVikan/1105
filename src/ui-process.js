@@ -109,6 +109,7 @@ function install(Renderer){const p=Renderer.prototype,oldDisc=p.disc;
   const backdrop=s==='game'&&this.gameBackdrop();
   if(backdrop){
    c.setTransform(1,0,0,1,0,0);
+   c.clearRect(0,0,this.canvas.width,this.canvas.height);
    c.drawImage(backdrop,0,0,this.canvas.width,this.canvas.height);
   }
   c.setTransform(this.dpr*this.scale,0,0,this.dpr*this.scale,this.offsetX*this.dpr,0);
