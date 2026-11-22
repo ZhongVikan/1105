@@ -6,7 +6,7 @@ const INFERENCE_FRAME=[0,0,147,81];
 const WIN_RATE_STYLES=[
  {below:30,stops:[[0,'#32363e'],[.38,'#4c484b'],[.65,'#a56e49'],[1,'#875333']]},
  {below:50,stops:[[0,'#f5faff'],[.38,'#eaf0f8'],[.66,'#bbcbd9'],[1,'#a0b2c4']],outline:'#556578'},
- {below:70,stops:[[0,'#ffe57a'],[.43,'#ffc93c'],[.53,'#f7f1d8'],[.65,'#a9e5fa'],[1,'#64bee3']],outline:'#596577'},
+ {below:70,stops:[[0,'#ffe57a'],[.42,'#ffcf48'],[1,'#f7ad6b']],outline:'#596577'},
  {stops:[[0,'#6726a7'],[.42,'#922ab1'],[.56,'#b82a64'],[1,'#b51f2f']]}
 ];
 function drawWinRate(renderer,rate,x,y){
