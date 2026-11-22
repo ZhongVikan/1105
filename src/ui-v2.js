@@ -3,22 +3,21 @@ const FX=require('./battle-effects');
 const meta=require('./ui-v2-meta');
 const VARIANT_NAMES={dark:'暗棋',classic:'经典象棋',jieqi:'揭棋',fusion:'合棋'};
 const INFERENCE_FRAME=[0,0,147,81];
-function winRateFill(ctx,rate,y){
- if(rate===null)return '#826048';
- if(rate<30)return '#8d572b';
- if(rate<50)return '#627482';
- const fill=ctx.createLinearGradient(0,y-11,0,y+11);
- if(rate<70){
-  fill.addColorStop(0,'#385b75');
-  fill.addColorStop(.42,'#6195ab');
-  fill.addColorStop(1,'#365b74');
-  return fill;
+const WIN_RATE_STYLES=[
+ {below:30,stops:[[0,'#32363e'],[.38,'#4c484b'],[.65,'#a56e49'],[1,'#875333']]},
+ {below:50,stops:[[0,'#f5faff'],[.38,'#eaf0f8'],[.66,'#bbcbd9'],[1,'#a0b2c4']],outline:'#556578'},
+ {below:70,stops:[[0,'#ffe57a'],[.43,'#ffc93c'],[.53,'#f7f1d8'],[.65,'#a9e5fa'],[1,'#64bee3']],outline:'#596577'},
+ {stops:[[0,'#6726a7'],[.42,'#922ab1'],[.56,'#b82a64'],[1,'#b51f2f']]}
+];
+function drawWinRate(renderer,rate,x,y){
+ if(rate===null){
+  renderer.text('—',x,y,23,'#826048','center',true);
+  return;
  }
- fill.addColorStop(0,'#6726a7');
- fill.addColorStop(.42,'#922ab1');
- fill.addColorStop(.56,'#b82a64');
- fill.addColorStop(1,'#b51f2f');
- return fill;
+ const style=WIN_RATE_STYLES.find(tier=>tier.below===undefined||rate<tier.below);
+ const fill=renderer.ctx.createLinearGradient(0,y-11,0,y+11);
+ for(const [offset,color] of style.stops)fill.addColorStop(offset,color);
+ renderer.text(rate+'%',x,y,23,fill,'center',true,style.outline);
 }
 const TYPES={'帥':'general','帅':'general','將':'general','将':'general','仕':'advisor','士':'advisor','相':'elephant','象':'elephant','車':'rook','车':'rook','俥':'rook','馬':'horse','马':'horse','傌':'horse','炮':'cannon','砲':'cannon','兵':'pawn','卒':'pawn'};
 const BUTTONS={'简易 · 菜就多练局':'002','普通 · 不服就干场':'003','困难 · 棋王修罗场':'004','暂停':'005','悔棋':'006','翻转':'007','重开':'008','更多':'009','表情':'010','查看隐私保护指引':'011','取消等待':'014','取消匹配':'014','收起表情':'015','查看棋局':'017','返回首页':'018'};
@@ -30,8 +29,8 @@ function install(Renderer){const p=Renderer.prototype;
  p.v2Frame=function(key,x,y,w,h){const im=this.uiImage(key),m=meta[key];if(!im||!m)return false;const [sx,sy,sw,sh]=m.box,c=this.ctx;
  c.save();c.shadowColor='#32241455';c.shadowBlur=3;c.shadowOffsetY=2;this.rounded(x,y,w,h,14);c.fillStyle=key.endsWith('red')?'#ce342f':'#302c27';c.fill();c.shadowBlur=0;c.shadowOffsetY=0;
  this.rounded(x+2,y+2,w-4,h-4,12);c.save();c.clip();c.drawImage(im,sx+sw*.54,sy+10,2,sh-20,x+2,y+2,w-4,h-4);c.restore();c.strokeStyle='#efc77f';c.lineWidth=1;c.stroke();c.restore();return true;};
- p.text=function(label,x,y,size,color,align,bold){if(this._v2HomeFunctions){const functions=['暗棋','经典象棋','揭棋','邀请好友','与好友来一局','大厅匹配','在线匹配对手'];if(functions.includes(String(label)))color='#ffffff';}
- if(this._v2HomeFunctions&&color==='#ffffff'){this.ctx.save();this.ctx.shadowColor='#422600';this.ctx.shadowBlur=2;this.ctx.shadowOffsetY=1;old.text.call(this,label,x,y,size,color,align,bold);this.ctx.restore();return;}return old.text.call(this,label,x,y,size,color,align,bold);};
+ p.text=function(label,x,y,size,color,align,bold,outline){if(this._v2HomeFunctions){const functions=['暗棋','经典象棋','揭棋','邀请好友','与好友来一局','大厅匹配','在线匹配对手'];if(functions.includes(String(label)))color='#ffffff';}
+ if(this._v2HomeFunctions&&color==='#ffffff'){this.ctx.save();this.ctx.shadowColor='#422600';this.ctx.shadowBlur=2;this.ctx.shadowOffsetY=1;old.text.call(this,label,x,y,size,color,align,bold,outline);this.ctx.restore();return;}return old.text.call(this,label,x,y,size,color,align,bold,outline);};
  p.home=function(){this._v2HomeFunctions=true;try{return old.home.call(this);}finally{this._v2HomeFunctions=false;}};
  p.referenceModeButton=function(variant,x,y,w,h,action){const im=this.uiImage('mode_reference');if(!im)return false;const selected=(this.runtime.variant||'dark')===variant,c=this.ctx;
  this._modeSprites=this._modeSprites||{};const key=variant+'|'+selected;let layer=this._modeSprites[key];if(!layer){layer=wx.createCanvas();layer.width=432;layer.height=132;const q=layer.getContext('2d'),sx=selected?94:553;
@@ -220,7 +219,7 @@ function install(Renderer){const p=Renderer.prototype;
    const tileFill='rgba(248,234,209,.58)';
    this.card(57,y+68,124,63,tileFill);this.card(194,y+68,124,63,tileFill);
    this.text(stats.games,119,y+87,23,'#000000','center',true);this.text('对局数',119,y+113,13,'#725539','center');
-   this.text(rate===null?'—':rate+'%',256,y+87,23,winRateFill(this.ctx,rate,y+87),'center',true);this.text('胜率',256,y+113,13,'#725539','center');
+   drawWinRate(this,rate,256,y+87);this.text('胜率',256,y+113,13,'#725539','center');
   }else this.text(stats.status==='error'?'战绩暂时无法读取':'正在读取战绩…',187.5,y+99,15,'#826048','center');
   const failed=stats.status==='error',buttonHeight=40,buttonWidth=buttonHeight*INFERENCE_FRAME[2]/INFERENCE_FRAME[3],buttonY=y+141;
   const closeCenter=failed?119.5:187.5;
