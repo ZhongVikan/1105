@@ -119,41 +119,50 @@ test('avatar taps open stats for the displayed player in online and simulated ga
   a.equal(avatarTargets().length,0);
  }finally{teardown(app);}
 });
-test('stats paints translucent cards, ranks the displayed rate, and reuses the inference frame to close',()=>{
+test('stats paints translucent cards, ranks the displayed rate, and matches the close and retry buttons',()=>{
  mock();
  const Renderer=require('../src/renderer'),r=new Renderer({scene:'game'}),paints=[],labels=[],frames=[];
- const diamond={addColorStop(){}};
- r.ctx.createLinearGradient=()=>diamond;
+ const platinum=[[0,'#385b75'],[.42,'#6195ab'],[1,'#365b74']];
+ const diamond=[[0,'#16688f'],[.42,'#078eb2'],[.56,'#186c9c'],[1,'#253b82']];
+ r.ctx.createLinearGradient=()=>({stops:[],addColorStop(offset,color){this.stops.push([offset,color]);}});
  r.card=(x,y,w,h,fill)=>paints.push(fill);
  r.text=(label,x,y,size,fill)=>labels.push({label,fill});
  r.pauseFrameArt=(...box)=>{frames.push(box);return true;};
- let closed=0;
- const controller={closePlayerStats(){closed++;},showPlayerStats(){}};
+ let closed=0,retrySide;
+ const controller={closePlayerStats(){closed++;},showPlayerStats(side){retrySide=side;}};
  const stats={status:'ready',variant:'dark',name:'棋友',games:10000};
- const checkCloseFrame=([x,y,w,h],center)=>{
+ const errorStats={...stats,status:'error',side:'black'};
+ const checkButtonFrame=([x,,w,h],center)=>{
   a.ok(Math.abs(w/h-147/81)<1e-10);
   a.ok(Math.abs(x+w/2-center)<1e-10);
  };
  try{
-  for(const [wins,rate,fill] of [[2990,'29.9%','#8d572b'],[2996,'30%','#627482'],[4990,'49.9%','#627482'],[5000,'50%','#a56c00'],[6990,'69.9%','#a56c00'],[7000,'70%',diamond]]){
+  for(const [wins,rate,fill] of [[2990,'29.9%','#8d572b'],[2996,'30%','#627482'],[4990,'49.9%','#627482'],[5000,'50%',platinum],[6990,'69.9%',platinum],[7000,'70%',diamond]]){
    r.playerStatsCard(controller,{...stats,wins});
-   a.deepEqual(labels.find(text=>text.label===rate),{label:rate,fill});
+   const rateLabel=labels.find(text=>text.label===rate);
+   a.ok(rateLabel);a.deepEqual(rateLabel.fill.stops??rateLabel.fill,fill);
    a.deepEqual(labels.find(text=>text.label===stats.games),{label:stats.games,fill:'#000000'});
    a.deepEqual(paints.splice(0),['rgba(255,248,232,.76)','rgba(248,234,209,.58)','rgba(248,234,209,.58)']);
    a.ok(labels.some(text=>text.label==='关闭'));labels.length=0;
-   checkCloseFrame(frames.at(-1),187.5);
+   checkButtonFrame(frames.at(-1),187.5);
    r.targets[0].action();
   }
   a.equal(closed,6);a.equal(frames.length,6);
-  r.playerStatsCard(controller,{...stats,status:'error'});
-  checkCloseFrame(frames.at(-1),119.5);a.equal(r.targets.length,2);
+  const singleFrame=frames.at(-1);
+  r.playerStatsCard(controller,errorStats);
+  const [closeFrame,retryFrame]=frames.slice(6);
+  checkButtonFrame(closeFrame,119.5);checkButtonFrame(retryFrame,255.5);
+  a.deepEqual(retryFrame.slice(1),closeFrame.slice(1));
+  a.ok(labels.some(text=>text.label==='重试'));a.equal(r.targets.length,2);
+  r.targets[1].action();a.equal(retrySide,'black');
   r.targets[0].action();a.equal(closed,7);
   r.pauseFrameArt=()=>false;
   const artwork=[];
-  r.battleArt=(box,x,y,w,h,radius,blank,key)=>{artwork.push(key);checkCloseFrame([x,y,w,h],187.5);return key==='inference_button';};
+  r.battleArt=(box,x,y,w,h,radius,blank,key)=>{artwork.push({key,frame:[x,y,w,h]});return key==='inference_button';};
   r.playerStatsCard(controller,{...stats,games:0,wins:0});
   a.deepEqual(labels.find(text=>text.label==='—'),{label:'—',fill:'#826048'});
-  a.deepEqual(artwork,['inference_button']);
+  r.playerStatsCard(controller,errorStats);
+  a.deepEqual(artwork,[singleFrame,closeFrame,retryFrame].map(frame=>({key:'inference_button',frame})));
  }finally{delete global.wx;delete global.requestAnimationFrame;delete global.cancelAnimationFrame;}
 });
 test('navigation refreshes target scene for home and AI controls',async()=>{
