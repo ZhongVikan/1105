@@ -7,4 +7,17 @@ test('AI difficulty has distinct budgets and bounded, legal ranked choices',()=>
 test('selection foreground is drawn after every piece and impact',()=>{const Renderer=require('../src/renderer'),r=Object.create(Renderer.prototype),calls=[];const ctx=new Proxy({save(){},restore(){},arc(x,y,r){calls.push('ring:'+r);},drawImage(){calls.push('layer');}},{get:(o,k)=>k in o?o[k]:()=>{}});global.wx={createCanvas:()=>({getContext:()=>ctx})};Object.assign(r,{ctx,boardCache:{},disc(x,y,r,text){calls.push(text);},boardPoint:p=>p});r.board({pieces:[{id:'s',x:1,y:1,text:'selected'},{id:'n',x:2,y:1,text:'neighbor'}],selectedId:'s'}, {x:0,y:0,w:720,h:800},null,0);FX.rings(r,{pieces:[{id:'s',x:1,y:1,text:'selected'}],selectedId:'s'},null,0);a.ok(calls.indexOf('selected')>calls.indexOf('neighbor'));a.ok(calls.indexOf('ring:36')>calls.indexOf('selected'));a.equal(calls.includes('ring:43'),false);delete global.wx;});
 test('visual motion does not block legal selection',async()=>{const def=require('../src/controller'),G=require('../utils/game-engine'),s=G.newGame(undefined,'classic'),p={...def,motion:{at:Date.now(),move},_state:s,_mode:'local',data:{...def.data},tick(){},setData(d){Object.assign(this.data,d);},_audio:{effect(){}}};const piece=s.pieces.find(p=>p.side==='red');await p.onPoint({detail:{point:{x:piece.x,y:piece.y},pieceId:piece.id}});a.equal(p.data.selectedId,piece.id);});
 test('demand renderer paints one final clean frame when effects expire, then sleeps',()=>{const Renderer=require('../src/renderer'),r=Object.create(Renderer.prototype),motion={at:Date.now()-2000,move};Object.assign(r,{running:true,dirty:false,lastDraw:motion.at+50,runtime:{scene:'game',controller:{motion,data:{}}},draw(){this.draws=(this.draws||0)+1;}});global.requestAnimationFrame=()=>a.fail('completed effect must not spin frames');r.loop();a.equal(r.draws,1);r.loop();a.equal(r.draws,1);delete global.requestAnimationFrame;});
+test('battle renderer follows uneven refresh intervals at its target frame rate',t=>{
+ const Renderer=require('../src/renderer'),BattleTimeline=require('../src/battle-timeline');
+ t.mock.timers.enable({apis:['Date'],now:100000});
+ for(const fxQuality of [1,0]){
+  const start=Date.now(),drawn=[],battle=new BattleTimeline(),r=Object.create(Renderer.prototype);
+  battle.enqueue({...move,revealed:true},{},'reveal',{status:'playing'},start);
+  Object.assign(r,{running:true,dirty:false,lastDraw:start,fxQuality,queueFrame(){},runtime:{scene:'game',controller:{_battle:battle,data:{}}},draw(time){drawn.push(time-start);}});
+  for(let repeat=0;repeat<3;repeat++)for(const step of [15,18,16,17,15,18,17,17]){t.mock.timers.tick(step);r.loop();}
+  a.equal(drawn[0],15);
+  a.equal(drawn.length,fxQuality===1?24:12);
+  a.ok(drawn.slice(1).every((at,i)=>at-drawn[i]<=(fxQuality===1?18:35)));
+ }
+});
 test('low-time warning is exported and callable by player renderer',()=>{let stroked=false;FX.danger({ctx:new Proxy({stroke(){stroked=true;}},{get:(o,k)=>k in o?o[k]:()=>{}}),rounded(){}},100,1234);a.equal(stroked,true);});

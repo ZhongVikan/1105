@@ -1,7 +1,7 @@
 // Immutable public snapshots keep presentation sequential without blocking chess input or clocks.
 const FX=require('./battle-effects');
 class BattleTimeline{
- constructor(){this.events=[];this.cues=[];this.selection=null;this.pausedAt=null;this.revision=0;this.serial=0;}
+ constructor(){this.events=[];this.cues=[];this.selection=null;this.reveal=null;this.pausedAt=null;this.revision=0;this.serial=0;}
  enqueue(move,view,event,state,now=Date.now(),options={}){
   this.advance(now);const tail=this.events[this.events.length-1],at=Math.max(now,tail?tail.at+tail.timings.total:now);
   const e={id:++this.serial,at,move,timings:FX.timing(move),...view,particles:FX.particles(move.id+':'+this.serial,12)};
@@ -12,6 +12,11 @@ class BattleTimeline{
  }
  confirm(e,move,view,now=Date.now()){
   if(!e)return;
+  const {travel,reveal,impact}=e.timings;
+  if(reveal&&move.revealed&&now>e.at+travel+reveal/2&&view.pieces.some(p=>p.id===move.id&&!p.hidden)){
+   // Finish the original flip on its back if the confirmed face missed the midpoint.
+   this.reveal={id:move.id,point:move.to||move.from,at:Math.max(now,e.at+impact),duration:140};
+  }
   Object.assign(e,view,{move});
   this.revision++;
  }
@@ -20,16 +25,17 @@ class BattleTimeline{
   while(this.events.length&&now>=this.events[0].at+this.events[0].timings.total){this.events.shift();this.revision++;}
   for(let i=this.cues.length-1;i>=0;i--)if(now>=this.cues[i].at+this.cues[i].duration){this.cues.splice(i,1);this.revision++;}
   if(this.selection&&now>=this.selection.at+150){this.selection=null;this.revision++;}
+  if(this.reveal&&now>=this.reveal.at+this.reveal.duration){this.reveal=null;this.revision++;}
   return this.events[0]||null;
  }
  select(id,now=Date.now()){this.selection=id?{id,at:now}:null;this.revision++;}
  pause(now=Date.now()){if(this.pausedAt===null)this.pausedAt=now;}
- resume(now=Date.now()){if(this.pausedAt===null)return 0;const delta=now-this.pausedAt;for(const e of this.events)e.at+=delta;for(const e of this.cues)e.at+=delta;if(this.selection)this.selection.at+=delta;this.pausedAt=null;this.revision++;return delta;}
- clear(){this.events.length=0;this.cues.length=0;this.selection=null;this.pausedAt=null;this.revision++;}
- active(){return this.events.length>0||this.cues.length>0||!!this.selection;}
+ resume(now=Date.now()){if(this.pausedAt===null)return 0;const delta=now-this.pausedAt;for(const e of this.events)e.at+=delta;for(const e of this.cues)e.at+=delta;if(this.selection)this.selection.at+=delta;if(this.reveal)this.reveal.at+=delta;this.pausedAt=null;this.revision++;return delta;}
+ clear(){this.events.length=0;this.cues.length=0;this.selection=null;this.reveal=null;this.pausedAt=null;this.revision++;}
+ active(){return this.events.length>0||this.cues.length>0||!!this.selection||!!this.reveal;}
  animating(now=Date.now()){
   if(this.pausedAt!==null)return false;
-  return this.events.some(e=>now<e.at+e.timings.total)||this.cues.length>0||!!this.selection;
+  return this.events.some(e=>now<e.at+e.timings.total)||this.cues.length>0||!!this.selection||!!(this.reveal&&now<this.reveal.at+this.reveal.duration);
  }
 }
 module.exports=BattleTimeline;

@@ -6,6 +6,8 @@ const YS=[156,293.5,427.5,558.5,689.5,825,956.5,1090.5,1221.5,1360];
 const NAMES={'帥':'general','帅':'general','將':'general','将':'general','士':'advisor','仕':'advisor','象':'elephant','相':'elephant','車':'chariot','车':'chariot','俥':'chariot','馬':'horse','马':'horse','傌':'horse','炮':'cannon','砲':'cannon','兵':'soldier','卒':'soldier'};
 const NOTICE=['抵制不良游戏，拒绝盗版游戏。注意自我保护，谨防受骗上当。','适度游戏益脑，沉迷游戏伤身。合理安排时间，享受健康生活。','创作者Vikan'];
 const HOME_ART=['background','logo_title','home_hero','mode_reference','home_reference'];
+const GAME_BACKGROUND_FILTER='saturate(.84) brightness(1.03) blur(.35px)';
+const GAME_BACKGROUND_TINT='rgba(255,248,231,.28)';
 function install(Renderer){const p=Renderer.prototype,oldDisc=p.disc;
  p.loadUiPackage=function(name){
   this.uiPackages=this.uiPackages||{};
@@ -24,7 +26,7 @@ function install(Renderer){const p=Renderer.prototype,oldDisc=p.disc;
   loads.set(name,pending);
   return pending;
  };
- p.resize=function(){const info=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync();this.windowWidth=info.windowWidth;this.scale=info.windowWidth>=600?Math.min(info.windowWidth/375,info.windowHeight/812):info.windowWidth/375;this.offsetX=(info.windowWidth-375*this.scale)/2;this.height=info.windowHeight/this.scale;this.dpr=Resolution.dpr(info,this.fxQuality===0);this.canvas.width=Math.round(info.windowWidth*this.dpr);this.canvas.height=Math.round(info.windowHeight*this.dpr);this.top=(info.safeArea?info.safeArea.top:20)/this.scale;if(wx.getMenuButtonBoundingClientRect){const b=wx.getMenuButtonBoundingClientRect();if(b&&b.bottom)this.top=Math.max(this.top,b.bottom/this.scale+8);}this.top=Math.max(28,this.top);this.bottom=(info.safeArea?Math.max(0,info.windowHeight-info.safeArea.bottom):0)/this.scale;this.boardCache=null;this.layoutBoard(this.runtime.controller&&this.runtime.controller.data);this.invalidate();};
+ p.resize=function(){const info=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync();this.windowWidth=info.windowWidth;this.scale=info.windowWidth>=600?Math.min(info.windowWidth/375,info.windowHeight/812):info.windowWidth/375;this.offsetX=(info.windowWidth-375*this.scale)/2;this.height=info.windowHeight/this.scale;this.dpr=Resolution.dpr(info,this.fxQuality===0);this.canvas.width=Math.round(info.windowWidth*this.dpr);this.canvas.height=Math.round(info.windowHeight*this.dpr);this.top=(info.safeArea?info.safeArea.top:20)/this.scale;if(wx.getMenuButtonBoundingClientRect){const b=wx.getMenuButtonBoundingClientRect();if(b&&b.bottom)this.top=Math.max(this.top,b.bottom/this.scale+8);}this.top=Math.max(28,this.top);this.bottom=(info.safeArea?Math.max(0,info.windowHeight-info.safeArea.bottom):0)/this.scale;this.boardCache=null;this._gameBackdrop=null;this.layoutBoard(this.runtime.controller&&this.runtime.controller.data);this.invalidate();};
  p.uiImage=function(key){
   const src=assets[key];if(!src)return null;
   this.uiPackages=this.uiPackages||{};const pkg=src.split('/')[0];
@@ -52,7 +54,24 @@ function install(Renderer){const p=Renderer.prototype,oldDisc=p.disc;
   }));
   return results.every(Boolean);
  };
- p.uiArt=function(key,x,y,w,h,clip){const im=this.uiImage(key);if(!im)return false;const c=this.ctx,quiet=key==='background'||key==='home_hero';c.save();if(quiet&&key==='background')c.filter=this._sceneForArt==='home'?'saturate(.90) contrast(.95) brightness(1.02) blur(.45px)':'saturate(.84) brightness(1.03) blur(.35px)';else if(quiet)c.filter='saturate(.92) brightness(1.02)';if(clip)c.drawImage(im,...clip,x,y,w,h);else c.drawImage(im,x,y,w,h);c.restore();return true;};
+ p.uiArt=function(key,x,y,w,h,clip){const im=this.uiImage(key);if(!im)return false;const c=this.ctx,quiet=key==='background'||key==='home_hero';c.save();if(quiet&&key==='background')c.filter=this._sceneForArt==='home'?'saturate(.90) contrast(.95) brightness(1.02) blur(.45px)':GAME_BACKGROUND_FILTER;else if(quiet)c.filter='saturate(.92) brightness(1.02)';if(clip)c.drawImage(im,...clip,x,y,w,h);else c.drawImage(im,x,y,w,h);c.restore();return true;};
+ p.gameBackdrop=function(){
+  const image=this.uiImage('background');if(!image)return null;
+  if(this._gameBackdrop?.image===image)return this._gameBackdrop.canvas;
+  const cache=this._gameBackdrop={image,canvas:null};
+  try{
+   const canvas=wx.createCanvas(),{width,height}=this.canvas;
+   // The blurred background can reuse a raster no larger than the source art.
+   const ratio=Math.min(1,Math.sqrt(image.width*image.height/(width*height)));
+   canvas.width=Math.max(1,Math.round(width*ratio));canvas.height=Math.max(1,Math.round(height*ratio));
+   const ctx=canvas.getContext('2d');
+   ctx.fillStyle='#f7f0e4';ctx.fillRect(0,0,canvas.width,canvas.height);
+   ctx.filter=GAME_BACKGROUND_FILTER;ctx.drawImage(image,0,0,canvas.width,canvas.height);
+   ctx.filter='none';ctx.fillStyle=GAME_BACKGROUND_TINT;ctx.fillRect(0,0,canvas.width,canvas.height);
+   cache.canvas=canvas;
+  }catch(e){/* Draw directly when the offscreen canvas is unavailable. */}
+  return cache.canvas;
+ };
  p.uiFit=function(key,box,clip){const im=this.uiImage(key);if(!im)return false;const sw=clip?clip[2]:im.width,sh=clip?clip[3]:im.height,k=Math.min(box.w/sw,box.h/sh);return this.uiArt(key,box.x+(box.w-sw*k)/2,box.y+(box.h-sh*k)/2,sw*k,sh*k,clip);};
  p.boardPoint=function(point,flipped){const v=C.orient(point,flipped);return {x:XS[v.x]/2,y:YS[v.y]/2};};
  p.boardHit=function(x,y,rect,flipped){const px=(x-rect.x)*1440/rect.w,py=(y-rect.y)*1600/rect.h;let ix=0,iy=0;XS.forEach((v,i)=>{if(Math.abs(v-px)<Math.abs(XS[ix]-px))ix=i;});YS.forEach((v,i)=>{if(Math.abs(v-py)<Math.abs(YS[iy]-py))iy=i;});if(Math.hypot((px-XS[ix])/142,(py-YS[iy])/136)>.46)return null;return C.orient({x:ix,y:iy},flipped);};
@@ -84,6 +103,27 @@ function install(Renderer){const p=Renderer.prototype,oldDisc=p.disc;
   const fs=compact?9.2:10,lh=compact?15.5:17,y0=h-bottom-(compact?67:84);
   NOTICE.forEach((line,i)=>this.text(line,187.5,y0+i*lh,fs,'#5b5147','center',false));
  };
- p.draw=function(now=Date.now()){const c=this.ctx,s=this.runtime.scene,controller=this.runtime.controller;this._targetState={scene:s,waiting:!!(controller&&controller.data&&(controller.data.waiting||controller.data.starting))};c.setTransform(this.dpr*this.scale,0,0,this.dpr*this.scale,this.offsetX*this.dpr,0);const bx=-this.offsetX/this.scale,bw=this.windowWidth/this.scale;c.clearRect(bx,0,bw,this.height);c.fillStyle='#f7f0e4';c.fillRect(bx,0,bw,this.height);this._sceneForArt=s;this.uiArt('background',bx,0,bw,this.height);if(s==='home'){c.fillStyle='rgba(255,248,231,.025)';c.fillRect(bx,0,bw,this.height);}this.targets=[];if(s==='home')return this.home();if(s==='game'){c.fillStyle='rgba(255,248,231,.28)';c.fillRect(bx,0,bw,this.height);return this.game(now);}c.fillStyle='#faf6ef';c.fillRect(0,0,375,this.height);if(s==='difficulty')this.difficulty();if(s==='settings')this.settings();if(s==='rules')this.ruleScene();if(s==='profile')this.profileScene();};
+ p.draw=function(now=Date.now()){
+  const c=this.ctx,s=this.runtime.scene,controller=this.runtime.controller;
+  this._targetState={scene:s,waiting:!!(controller&&controller.data&&(controller.data.waiting||controller.data.starting))};
+  const backdrop=s==='game'&&this.gameBackdrop();
+  if(backdrop){
+   c.setTransform(1,0,0,1,0,0);
+   c.drawImage(backdrop,0,0,this.canvas.width,this.canvas.height);
+  }
+  c.setTransform(this.dpr*this.scale,0,0,this.dpr*this.scale,this.offsetX*this.dpr,0);
+  this._sceneForArt=s;
+  if(!backdrop){
+   const bx=-this.offsetX/this.scale,bw=this.windowWidth/this.scale;
+   c.clearRect(bx,0,bw,this.height);c.fillStyle='#f7f0e4';c.fillRect(bx,0,bw,this.height);
+   this.uiArt('background',bx,0,bw,this.height);
+   if(s==='home'||s==='game'){c.fillStyle=s==='game'?GAME_BACKGROUND_TINT:'rgba(255,248,231,.025)';c.fillRect(bx,0,bw,this.height);}
+  }
+  this.targets=[];
+  if(s==='home')return this.home();
+  if(s==='game')return this.game(now);
+  c.fillStyle='#faf6ef';c.fillRect(0,0,375,this.height);
+  if(s==='difficulty')this.difficulty();if(s==='settings')this.settings();if(s==='rules')this.ruleScene();if(s==='profile')this.profileScene();
+ };
 }
 module.exports={install,XS,YS,NOTICE};

@@ -123,7 +123,7 @@ function install(Renderer){const p=Renderer.prototype;
  if(!inference&&!d.waiting&&!d.ended)this.button('推理',16,this.top-16,56,36,()=>c.enterInference());
  if(!inference&&(d.mode==='ai'||d.mode==='local')&&!d.fakeOpponent&&!d.ended)this.button('暂停',375-72,this.top-16,56,36,()=>c.togglePause());
  this.player(d.topSide,d.topName,d.topAvatar,this.top+28,topCaptured,d,now);if(d.turn===d.topSide&&!d.paused&&!inference)FX.danger(this,this.top+28,warning);
- this.board(view,b,motion,visualNow);
+ this.board(view,b,motion,visualNow,inference?null:c._battle&&c._battle.reveal);
  if(!motion)this.captureHints(c,b);
  if(!inference){this.ctx.save();this.ctx.translate(b.x,b.y);this.ctx.scale(b.w/720,b.h/800);FX.rings(this,view,motion,visualNow,c._battle&&c._battle.selection);this.ctx.restore();}
  const boardBottom=b.y+b.h*(1094/1200),trayY=boardBottom+7,step=this.captureTray(bottomCaptured,trayY);
@@ -234,7 +234,7 @@ function install(Renderer){const p=Renderer.prototype;
    !key.endsWith('_selected')&&(/^v2_piece_(red|black)_/.test(key)||variant==='fusion'&&key.startsWith('v2_fusion_')))];
   if(online)keys.push('waiting_button');
   const ready=await this.preloadUiImages(keys);
-  if(ready)FX.preload(this);
+  if(ready){this.gameBackdrop();FX.preload(this);}
   return ready;
  };
 }
