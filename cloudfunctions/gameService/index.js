@@ -5,6 +5,72 @@ const uidKey=id=>crypto.createHash('sha256').update(id).digest('hex');
 const profile=p=>({uid:p.uid,nickname:p.nickname,avatar:p.avatar});
 async function optional(ref){try{const data=(await ref.get()).data;if(data)delete data._id;return data;}catch(e){if(/not exist|not found|不存在/i.test(e.message))return null;throw e;}}
 function liveEntries(lobby,now){return lobby.entries.filter(entry=>now-entry.at<QUEUE_TTL_MS);}
+const validRoomId=id=>typeof id==='string'&&/^[a-f0-9]{32}$/.test(id);
+const simulationRef=(rooms,id)=>rooms.doc(uidKey('simulation:'+id));
+const simulatedPlayerKey=nickname=>uidKey('simulated-player:'+nickname);
+const totals=(user,variant)=>user?.matchStats?.[variant]||{games:0,wins:0};
+
+async function addMatchResults(tx,variant,players){
+ const users=tx.collection('chess_users');
+ const refs=players.map(player=>users.doc(player.key));
+ const records=await Promise.all(refs.map(optional));
+ for(let i=0;i<players.length;i++){
+  const record=records[i],player=players[i];
+  if(!record&&!player.simulated)continue;
+  const {games,wins}=totals(record,variant);
+  const matchStats={...record?.matchStats,[variant]:{games:games+1,wins:wins+(player.won?1:0)}};
+  if(record)await refs[i].update({data:{matchStats}});
+  else await refs[i].set({data:{matchStats}});
+ }
+}
+
+async function recordRoomResult(tx,room,previousStatus){
+ const {state,red,black}=room;
+ if(previousStatus!=='playing'||state.status!=='ended'||state.reason==='not-ready'||!red||!black||red.uid===black.uid)return;
+ await addMatchResults(tx,state.variant||'dark',[
+  {key:uidKey(red.uid),won:state.winner==='red'},
+  {key:uidKey(black.uid),won:state.winner==='black'},
+ ]);
+}
+
+async function playerStats(rooms,users,uid,event){
+ if(!['red','black'].includes(event.side))throw Error('请选择玩家');
+ let key,nickname,variant;
+ if(validRoomId(event.simulationId)){
+  const simulation=await optional(simulationRef(rooms,event.simulationId));
+  if(!simulation||simulation.uid!==uid)throw Error('未找到拟真人对局');
+  variant=simulation.variant;
+  if(event.side==='red')key=uidKey(uid);
+  else{nickname=simulation.nickname;key=simulatedPlayerKey(nickname);}
+ }else{
+  if(!validRoomId(event.roomId))throw Error('房间链接无效');
+  const room=await optional(rooms.doc(event.roomId));
+  if(!room||!S.sideOf(room,uid)||!room[event.side])throw Error('你不在这个房间');
+  const player=room[event.side];
+  if(event.avatar!==player.avatar||event.nickname!==player.nickname)throw Error('玩家信息已更新，请重试');
+  variant=room.state.variant||'dark';nickname=player.nickname;key=uidKey(player.uid);
+ }
+ const user=await optional(users.doc(key));
+ const {games,wins}=totals(user,variant);
+ return {ok:true,variant,nickname:nickname||user?.nickname||'玩家',games,wins};
+}
+
+async function recordSimulatedResult(uid,event){
+ if(!validRoomId(event.simulationId)||!Number.isSafeInteger(event.round)||event.round<1||![null,'red','black'].includes(event.winner))throw Error('拟真人对局结果无效');
+ return db.runTransaction(async tx=>{
+  const ref=simulationRef(tx.collection('chess_rooms'),event.simulationId),simulation=await optional(ref);
+  if(!simulation||simulation.uid!==uid)throw Error('未找到拟真人对局');
+  if(event.round<=simulation.rounds)return {ok:true};
+  if(event.round!==simulation.rounds+1)throw Error('请先同步上一局战绩');
+  await addMatchResults(tx,simulation.variant,[
+   {key:uidKey(uid),won:event.winner==='red'},
+   {key:simulatedPlayerKey(simulation.nickname),won:event.winner==='black',simulated:true},
+  ]);
+  await ref.update({data:{rounds:event.round}});
+  return {ok:true};
+ });
+}
+
 function avatarFormat(bytes) {
  if (!Buffer.isBuffer(bytes) || bytes.length < 12 || bytes.length > 384 * 1024) return '';
  if (bytes.toString('hex', 0, 8) === '89504e470d0a1a0a') return 'png';
@@ -38,6 +104,8 @@ exports.main=async event=>{
  const {OPENID:uid,ENV:env}=cloud.getWXContext();if(!uid)throw Error('请在微信中登录');const rooms=db.collection('chess_rooms');
  if(event.action==='roomAvatar')return await roomAvatar(rooms,uid,env,event.roomId,event.fileID);
  const key=uidKey(uid),users=db.collection('chess_users');
+ if(event.action==='playerStats')return await playerStats(rooms,users,uid,event);
+ if(event.action==='recordSimulatedResult')return await recordSimulatedResult(uid,event);
  // Polls are by far the hottest online path.  A paired room that is still
  // inside its current deadline has no state to mutate, so avoid opening a
  // transaction (and the extra user read) just to return the same snapshot.
@@ -52,7 +120,7 @@ exports.main=async event=>{
  if(event.action==='profile'){
   const nickname=String(event.nickname||'').trim(),avatar=String(event.avatar||'');if(!nickname||nickname.length>24||!avatar.startsWith('cloud://'))throw Error('请填写昵称并选择头像');
   // Identity comes only from WX context, never from a caller-supplied openid.
-  await db.runTransaction(async tx=>{const ref=tx.collection('chess_users').doc(key),old=await optional(ref);await ref.set({data:{uid,nickname,avatar,activeRoom:old&&old.activeRoom||null}});});return {ok:true};
+  await db.runTransaction(async tx=>{const ref=tx.collection('chess_users').doc(key),old=await optional(ref);await ref.set({data:{...old,uid,nickname,avatar,activeRoom:old&&old.activeRoom||null}});});return {ok:true};
  }
  const me=await optional(users.doc(key));if(!me)throw Error('请先设置头像昵称');
  const result=await db.runTransaction(async tx=>{
@@ -60,18 +128,21 @@ exports.main=async event=>{
   const roomCollection=tx.collection('chess_rooms');
   if(['create','match','join','cancel'].includes(event.action)){
    const lobbyRef=tx.collection('chess_lobby').doc('queue'),lobby=await optional(lobbyRef)||{entries:[]};lobby.entries=liveEntries(lobby,now);
+   let simulated;
    if(fresh.activeRoom){
     const activeRef=roomCollection.doc(fresh.activeRoom),active=await optional(activeRef);
     if(event.action==='cancel'&&event.roomId&&event.roomId!==fresh.activeRoom){
      // A retry for an old queue entry must not cancel the current room.
      if(active&&active.red&&active.black&&active.state.status==='playing'){
-      S.expire(active,now);await activeRef.set({data:active});return {ok:true,...S.publicRoom(active,uid,now)};
+      S.expire(active,now);await recordRoomResult(tx,active,'playing');
+      await activeRef.set({data:active});return {ok:true,...S.publicRoom(active,uid,now)};
      }
      return {ok:true,cancelled:true};
     }
     if(active){
      // Settle timeout before deciding whether this account is still occupied.
-     S.expire(active,now);
+     const previousStatus=active.state.status;
+     S.expire(active,now);await recordRoomResult(tx,active,previousStatus);
      if(active.state.status==='playing'){
       const reuseWaiting=event.action==='join'?event.roomId===active.id:
        event.action!=='cancel'&&(active.state.variant||'dark')===variant&&!!active.match===(event.action==='match')&&
@@ -80,6 +151,11 @@ exports.main=async event=>{
        // Resume a real game, including its server-side variant, rather than lock the user out.
        await activeRef.set({data:active});return {ok:true,...S.publicRoom(active,uid,now)};
       }
+      if(event.action==='cancel'&&event.simulate===true&&active.match&&active.id===event.roomId){
+       const {nickname}=require('./shared/fake-opponents').pick();
+       await simulationRef(roomCollection,active.id).set({data:{uid,nickname,variant:active.state.variant||'dark',rounds:0}});
+       simulated={id:active.id,nickname};
+      }
       // Switching an unpaired room is safe; remove its queue entry in the same transaction.
       await activeRef.remove();
      }else await activeRef.set({data:active});
@@ -87,7 +163,13 @@ exports.main=async event=>{
     lobby.entries=lobby.entries.filter(e=>e.id!==fresh.activeRoom);
     await ur.update({data:{activeRoom:null}});
    }
-   if(event.action==='cancel'){await lobbyRef.set({data:lobby});return {ok:true,cancelled:true};}
+   if(event.action==='cancel'){
+    if(!simulated&&event.simulate===true&&validRoomId(event.roomId)){
+     const prior=await optional(simulationRef(roomCollection,event.roomId));
+     if(prior&&prior.uid===uid)simulated={id:event.roomId,nickname:prior.nickname};
+    }
+    await lobbyRef.set({data:lobby});return {ok:true,cancelled:true,...(simulated?{simulated}:{})};
+   }
    let room=null;
    if(event.action==='join'){
     if(!/^[a-f0-9]{32}$/.test(event.roomId||''))throw Error('房间链接无效');room=await optional(roomCollection.doc(event.roomId));if(!room||room.black||room.state.status!=='playing')throw Error('房间已满或已结束');
@@ -128,8 +210,9 @@ exports.main=async event=>{
    }
    throw Error('对局进行中不能离开房间');
   }
-  const beforeRev=room.rev;
+  const beforeRev=room.rev,previousStatus=room.state.status;
   S.reduce(room,uid,event,now);
+  await recordRoomResult(tx,room,previousStatus);
   let writeRoom=event.action!=='poll'||room.rev!==beforeRev;
   if(event.action==='poll'&&room.match&&!room.black&&room.state.status==='playing'){
    const age=now-(room.queueHeartbeatAt||room.createdAt||0);

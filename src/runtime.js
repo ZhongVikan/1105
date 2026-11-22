@@ -5,6 +5,7 @@ const S = require('../utils/storage');
 const Online = require('../utils/online');
 const config = require('../config');
 const Audio = require('../utils/audio');
+const SimulatedStats = require('../utils/simulated-stats');
 
 function inviteRoom(query){
  let room=query&&query.room;
@@ -34,6 +35,7 @@ class Runtime {
   });
   wx.onShow(options=>{
    this.hidden=false;this.audio.refresh();
+   if(this.profile)SimulatedStats.flush().catch(()=>{});
    if(this.authButton)this.authButton.show();
    if(this.feedbackButton)this.feedbackButton.show();
    else if(this.scene==='settings')this.syncFeedbackButton();
@@ -44,9 +46,13 @@ class Runtime {
    if(this.scene==='profile'&&this.authButton)this.makeAuthButton();
    if(this.scene==='settings')this.syncFeedbackButton();
   });
+  if(wx.onNetworkStatusChange)wx.onNetworkStatusChange(({isConnected})=>{
+   if(isConnected&&this.profile)SimulatedStats.flush().catch(()=>{});
+  });
   if(wx.showShareMenu)wx.showShareMenu({withShareTicket:true,menus:['shareAppMessage']});
   if(wx.onShareAppMessage)wx.onShareAppMessage(()=>this.shareInfo());
   this.renderer.resume();
+  if(this.profile)SimulatedStats.flush().catch(()=>{});
   this.invite(wx.getLaunchOptionsSync?wx.getLaunchOptionsSync().query:null);
  }
  toast(title){wx.showToast({title,icon:'none'});}
@@ -184,7 +190,7 @@ class Runtime {
  }
  touchEnd(e){const start=this.touch;this.touch=null;const t=e.changedTouches&&e.changedTouches[0];if(!start||!t||start.moved||start.scene!==this.scene)return;const p=this.position(t);if(Math.hypot(p.x-start.x,p.y-start.y)>10)return;
   const targetState=this.renderer._targetState,controller=this.controller,targetStateFresh=!targetState||targetState.scene===this.scene&&(!controller||targetState.waiting===!!(controller.data.waiting||controller.data.starting));const action=targetStateFresh&&this.renderer.targets.slice().reverse().find(r=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h);if(action){this.audio.effect('click');action.action();return;}
-  const c=controller;if(this.scene!=='game'||!c||c.data.showResult||c.data.showStickers||c.data.waiting||c.data.starting)return;
+  const c=controller;if(this.scene!=='game'||!c||c.data.showResult||c.data.showStickers||c.data.playerStats||c.data.waiting||c.data.starting)return;
   const rect=this.renderer.boardRect,point=this.renderer.boardHit(p.x,p.y,rect,c.data.flipped);if(!point){c.cancelSelection();return;}
   const visiblePieces=c.data.inference?c.data.inferencePieces:c.data.pieces;const piece=visiblePieces.find(v=>v.x===point.x&&v.y===point.y);c.onPoint({detail:{point,pieceId:piece?piece.id:null}});
  }

@@ -1,6 +1,7 @@
 const FX=require('./battle-effects');
 // Presentation-only replacement layer. Game state, hit boxes and timers stay in the controller.
 const meta=require('./ui-v2-meta');
+const VARIANT_NAMES={dark:'暗棋',classic:'经典象棋',jieqi:'揭棋',fusion:'合棋'};
 const TYPES={'帥':'general','帅':'general','將':'general','将':'general','仕':'advisor','士':'advisor','相':'elephant','象':'elephant','車':'rook','车':'rook','俥':'rook','馬':'horse','马':'horse','傌':'horse','炮':'cannon','砲':'cannon','兵':'pawn','卒':'pawn'};
 const BUTTONS={'简易 · 菜就多练局':'002','普通 · 不服就干场':'003','困难 · 棋王修罗场':'004','暂停':'005','悔棋':'006','翻转':'007','重开':'008','更多':'009','表情':'010','查看隐私保护指引':'011','取消等待':'014','取消匹配':'014','收起表情':'015','查看棋局':'017','返回首页':'018'};
 function install(Renderer){const p=Renderer.prototype;
@@ -70,6 +71,7 @@ function install(Renderer){const p=Renderer.prototype;
  return Math.max(step,Math.ceil(captured.length/columns)*step);
  };
  p.player=function(side,name,avatar,y,captured,data,now,capturePlacement='below'){const active=data.turn===side&&!data.ended&&!data.waiting,rotateBar=this.beginPlayerPerspective(data,side,y);
+ this.playerStatsTarget(data,side,41,y+24);
  if(!this.v2Frame('v2_player_bar_'+side,16,y,343,48)){this.endPlayerPerspective(rotateBar);return old.player.call(this,side,name,avatar,y,captured,data,now,capturePlacement);}
  const c=this.ctx,loaded=this.drawAvatar(avatar,41,y+24,20);
  if(!loaded&&!this.v2Art('v2_avatar_fallback_'+side,22,y+5,38,38))this.disc(41,y+23,16,side==='red'?'帥':'將',side);
@@ -99,7 +101,7 @@ function install(Renderer){const p=Renderer.prototype;
  const afterContact=!motion||visualNow-motion.at>=motion.timings.contact;
  const topCaptured=inference?d.inferenceTopCaptured:(motion?((afterContact?motion.afterBySide:motion.beforeBySide)[d.topSide]||[]):d.topCaptured);
  const bottomCaptured=inference?d.inferenceBottomCaptured:(motion?((afterContact?motion.afterBySide:motion.beforeBySide)[d.bottomSide]||[]):d.bottomCaptured);
- const warning=FX.warningPhase(c,now),variantTitle=({dark:'暗棋',classic:'经典象棋',jieqi:'揭棋',fusion:'合棋'})[c._state&&c._state.variant||this.runtime.variant||'dark'];
+ const warning=FX.warningPhase(c,now),variantTitle=VARIANT_NAMES[c._state&&c._state.variant||this.runtime.variant||'dark'];
  this.header(inference?'推理中':variantTitle+' · 对局中',false);
  if(!inference&&!d.waiting&&!d.ended)this.button('推理',16,this.top-16,56,36,()=>c.enterInference());
  if(!inference&&(d.mode==='ai'||d.mode==='local')&&!d.fakeOpponent&&!d.ended)this.button('暂停',375-72,this.top-16,56,36,()=>c.togglePause());
@@ -124,6 +126,7 @@ function install(Renderer){const p=Renderer.prototype;
  if(d.starting)this.startingRoom();
  if(d.inference&&d.inferenceAssumptionMenu)this.inferenceAssumptionSheet(c);
  if(d.showStickers&&!inference)this.stickerSheet(c);
+ if(d.playerStats&&!d.showResult&&!d.showStickers&&!inference)this.playerStatsCard(c,d.playerStats);
  if(d.showResult)this.result(c);if(!inference&&d.manualPaused){this.overlay();const y=Math.max(this.top+60,(this.height-180)/2);this.card(35,y,305,180,'rgba(255,247,231,0.72)','#e6c58d');this.text('对局已暂停',187.5,y+39,22,'#74512d','center',true);this.text(d.mode==='local'?'计时已暂停':'计时与 AI 均已暂停',187.5,y+76,13,'#927650','center');this.button('继续对局',64,y+110,247,46,()=>c.togglePause(),true);}
  };
 
@@ -174,10 +177,35 @@ function install(Renderer){const p=Renderer.prototype;
  const cx = 16 + (343 - box[2] * scale) / 2 + (portrait.x - box[0]) * scale;
  const cy = y + (48 - box[3] * scale) / 2 + (portrait.y - box[1]) * scale;
  this.drawAvatar(avatar, cx, cy, 50 * scale);
+ this.playerStatsTarget(data,side,cx,cy);
  const chars=Array.from((name||'').replace(/\s*·\s*/g,'·')),limit=active?5:13,short=chars.slice(0,limit).join('')+(chars.length>limit?'…':'');this.text(short,74,y+17,12.5,red?'#a52612':'#30302d','left',true);
  this.text(active?(data.paused?'计时暂停':'当前行棋'):'等待对方',74,y+34,11.5,'#a58c70','left',true);
  if(active){this.battleArt([590,1273,214,71],140.5,y+8,94,32,30,[665,1280,77,54,7,120]);this.ctx.save();this.ctx.shadowColor='#fff5ae';this.ctx.shadowOffsetY=0.6;this.text(data.seconds+'秒',226.5,y+25,19.5,'#c1200a','right',true);this.ctx.restore();}
  this.endPlayerPerspective(rotateBar);if(capturePlacement==='below')this.captureTray(captured,y+58,335,data.mode==='local'&&side==='black');
+ };
+ p.playerStatsTarget=function(data,side,cx,cy){
+  const controller=this.runtime.controller;
+  if(!controller||data.waiting||data.starting||data.inference||(data.mode!=='online'&&!data.fakeOpponent))return;
+  if(data.mode==='online'&&controller._room&&!controller._room[side])return;
+  this.targets.push({x:cx-24,y:cy-24,w:48,h:48,action:()=>controller.showPlayerStats(side)});
+ };
+ p.playerStatsCard=function(controller,stats){
+  const y=Math.max(this.top+60,(this.height-192)/2),close=()=>controller.closePlayerStats();
+  const name=Array.from(stats.name||'玩家'),heading=name.length>13?name.slice(0,13).join('')+'…':name.join('');
+  this.overlay('rgba(47,36,28,.36)');
+  this.card(40,y,295,192,'#fff8e8','#ebc477');
+  this.text(heading,187.5,y+26,19,'#61320f','center',true);
+  this.text(VARIANT_NAMES[stats.variant]+' · 对局战绩',187.5,y+51,13,'#826048','center');
+  if(stats.status==='ready'){
+   const rate=stats.games?Number((stats.wins*100/stats.games).toFixed(1))+'%':'—';
+   this.card(57,y+68,124,63,'#f8ead1');this.card(194,y+68,124,63,'#f8ead1');
+   this.text(stats.games,119,y+87,23,'#885322','center',true);this.text('对局数',119,y+113,13,'#725539','center');
+   this.text(rate,256,y+87,23,'#885322','center',true);this.text('胜率',256,y+113,13,'#725539','center');
+  }else this.text(stats.status==='error'?'战绩暂时无法读取':'正在读取战绩…',187.5,y+99,15,'#826048','center');
+  if(stats.status==='error'){
+   this.button('关闭',62,y+144,115,34,close);
+   this.button('重试',198,y+144,115,34,()=>controller.showPlayerStats(stats.side),true);
+  }else this.button('关闭',128,y+144,119,34,close,true);
  };
  p.inferenceAssumptionSheet=function(controller){
  const opts=this.runtime.controller.data.inferenceAssumptionOptions||[],rows=Math.ceil(opts.length/2),h=86+rows*38+48,y=Math.max(this.top+18,(this.height-h)/2);this.overlay('rgba(47,36,28,.74)');this.card(27,y,321,h,'rgba(255,247,231,.78)','#e6c58d');this.text('选择假设身份',187.5,y+30,20,'#74512d','center',true);this.text('仅用于推理，不代表正式棋局已揭示',187.5,y+57,11,'#8f7354','center');opts.forEach((o,i)=>{const x=44+(i%2)*145,yy=y+78+Math.floor(i/2)*38;this.card(x,yy,133,32,'#fff1cf','#d3a05a');this.text(o.label,x+66.5,yy+16,14,o.side==='red'?'#c52d21':'#252525','center',true);this.targets.push({x,y:yy,w:133,h:32,action:()=>controller.chooseInferenceAssumption(o.side,o.kind)});});this.button('取消选择',135,y+h-48,105,46,()=>controller.cancelInferenceAssumption(),true);

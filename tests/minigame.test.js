@@ -83,6 +83,42 @@ test('the identity panel displays the saved WeChat avatar when its download comp
   a.equal(crops.length,1);a.deepEqual(downloads,[fileID]);
  }finally{teardown(app);}
 });
+test('avatar taps open stats for the displayed player in online and simulated games',async()=>{
+ mock();
+ const Runtime=require('../src/runtime'),G=require('../utils/game-engine'),app=new Runtime(),r=app.renderer;
+ const roomId='a'.repeat(32),simulationId='b'.repeat(32),deadline=Date.now()+60000,requests=[];
+ app.profile={nickname:'甲',avatar:'cloud://a'};
+ const room={ok:true,roomId,rev:1,side:'red',state:G.newGame(undefined,'classic'),waiting:false,deadline,serverNow:Date.now(),red:app.profile,black:{nickname:'乙',avatar:'cloud://b'}};
+ wx.cloud={downloadFile:async()=>({tempFilePath:'/tmp/avatar.jpg'}),callFunction:async({data})=>{
+  if(data.action==='playerStats'){
+   requests.push(data);return {result:{ok:true,variant:'classic',nickname:data.side==='red'?'甲':'乙',games:8,wins:5}};
+  }
+  return {result:room};
+ }};
+ const avatarTargets=()=>r.targets.filter(target=>target.w===48&&target.h===48);
+ const tap=target=>{
+  const t={clientX:(target.x+target.w/2)*r.scale+r.offsetX,clientY:(target.y+target.h/2)*r.scale};
+  app.touchStart({touches:[t]});app.touchEnd({changedTouches:[t]});
+ };
+ const settled=()=>new Promise(resolve=>setImmediate(resolve));
+ try{
+  a.equal(await app.startGame({mode:'online',room:roomId,variant:'classic'}),true);
+  const c=app.controller;
+  r.draw();a.equal(avatarTargets().length,2);tap(avatarTargets()[0]);await settled();
+  a.equal(requests[0].side,'black');a.equal(requests[0].roomId,roomId);
+  a.equal(c.data.playerStats.name,'乙');a.equal(c.data.playerStats.games,8);a.equal(c._room.deadline,deadline);
+  r.draw();tap(r.targets[0]);a.equal(c.data.playerStats,null);
+  c.flip();r.draw();tap(avatarTargets()[0]);await settled();
+  a.equal(requests[1].side,'red');a.equal(c.data.playerStats.name,'甲');c.closePlayerStats();
+  c.stopPolling();c._mode='ai';c._room=null;c._fakeOpponent={nickname:'乙'};c._simulatedMatch={id:simulationId,round:1};
+  c._clock.start();c.setData({mode:'ai',fakeOpponent:true});c.sync();
+  const localDeadline=c._clock.deadline;r.draw();tap(avatarTargets()[1]);await settled();
+  a.equal(requests[2].side,'black');a.equal(requests[2].simulationId,simulationId);
+  a.equal(c.data.playerStats.status,'ready');a.equal(c._clock.deadline,localDeadline);a.equal(c._clock.reasons.size,0);
+  c.closePlayerStats();c._fakeOpponent=null;c.setData({fakeOpponent:false});r.draw();
+  a.equal(avatarTargets().length,0);
+ }finally{teardown(app);}
+});
 test('navigation refreshes target scene for home and AI controls',async()=>{
  mock();const Runtime=require('../src/runtime'),app=new Runtime();
  const tap=target=>{const x=(target.x+target.w/2)*app.renderer.scale+(app.renderer.offsetX||0),y=(target.y+target.h/2)*app.renderer.scale;app.touchStart({touches:[{clientX:x,clientY:y}]});app.touchEnd({changedTouches:[{clientX:x,clientY:y}]});};
