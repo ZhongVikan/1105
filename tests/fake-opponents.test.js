@@ -1,14 +1,32 @@
-const test=require('node:test'),a=require('node:assert/strict');
+const test=require('node:test'),a=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const F=require('../utils/fake-opponents'),Def=require('../src/controller'),G=require('../utils/game-engine'),Clock=require('../utils/turn-clock'),Online=require('../utils/online');
-function approveCancel(t){t.mock.method(Online,'call',async action=>{a.equal(action,'cancel');return {cancelled:true};});}
-test('fake opponent pool has 100 supplied nicknames',()=>{a.equal(F.names.length,100);a.equal(new Set(F.names).size,100);});
-test('fallback enters hard local AI after the server confirms cancellation',async t=>{approveCancel(t);const c={...Def,_alive:true,_mode:'online',_matchQueue:true,_room:{waiting:true,roomId:'r',rev:0},_token:0,_clock:{start(){}},data:{},setData(p){Object.assign(this.data,p)},sync(){},scheduleAI(){}};await c.activateFakeOpponent();a.equal(c._mode,'ai');a.equal(c._level,'hard');a.equal(c.data.waiting,false);a.ok(c._fakeOpponent.nickname);});
-test('fake match first local move is playable after fallback',async t=>{
- approveCancel(t);
+function approveCancel(t,outcome={cancelled:true}){t.mock.method(Online,'call',async action=>{a.equal(action,'cancel');return outcome;});}
+test('all 100 fake opponents have distinct packaged avatars shared by both rosters',()=>{
+ const server=require('../cloudfunctions/gameService/shared/fake-opponents');
+ const avatars=new Set();
+ a.equal(F.names.length,100);a.equal(new Set(F.names).size,100);
+ a.deepEqual(server.names,F.names);
+ for(const [index,nickname] of F.names.entries()){
+  const opponent=F.forNickname(nickname);
+  a.deepEqual(F.pick(()=>(index+.5)/F.names.length),opponent);
+  a.deepEqual(server.forNickname(nickname),opponent);
+  a.match(opponent.avatar,/^uiV2_2\/fake-avatars\/\d{3}\.jpg$/);
+  const image=fs.readFileSync(path.join(__dirname,'..',opponent.avatar));
+  a.deepEqual([...image.subarray(0,3)],[255,216,255]);
+  avatars.add(opponent.avatar);
+ }
+ a.equal(avatars.size,100);
+});
+test('fallback enters hard local AI with its fixed avatar after cancellation',async t=>{approveCancel(t);const c={...Def,_alive:true,_mode:'online',_matchQueue:true,_room:{waiting:true,roomId:'r',rev:0},_token:0,_clock:{start(){}},data:{},setData(p){Object.assign(this.data,p)},sync(){},scheduleAI(){}};await c.activateFakeOpponent();a.equal(c._mode,'ai');a.equal(c._level,'hard');a.equal(c.data.waiting,false);a.ok(c._fakeOpponent.avatar);a.deepEqual(c._fakeOpponent,F.forNickname(c._fakeOpponent.nickname));});
+test('a cloud-selected fake opponent shows its avatar and plays the first local move',async t=>{
+ const opponent=F.forNickname(F.names[38]);
+ approveCancel(t,{cancelled:true,simulated:{id:'a'.repeat(32),nickname:opponent.nickname}});
  const state=G.newGame(undefined,'classic');
  const c=Object.assign({},Def,{data:{...Def.data,mode:'online',onlineMatch:true,waiting:true},_alive:true,_mode:'online',_matchQueue:true,_room:{roomId:'r',rev:0,waiting:true},_state:state,_token:0,_history:[],_repetitionHistory:[],_clock:new Clock(),_audio:{cancelCountdown(){},effect(){},event(){},speak(){},cancelBattleQueue(){}},runtime:null});
  c.setData=patch=>Object.assign(c.data,patch);c.presentTransition=()=>{};c.updateResult=()=>{};c.sync=Def.sync;c.scheduleAI=()=>{};c.toast=()=>{};c._clock.start();
  await c.activateFakeOpponent();
+ a.equal(c.data.topName,opponent.nickname);
+ a.equal(c.data.topAvatar,opponent.avatar);
  const piece=c._state.pieces.find(p=>p.side==='red');let to=null;
  for(let y=0;y<10&&!to;y++)for(let x=0;x<9;x++)if(G.legalAttempt(c._state.pieces,piece.id,{x,y},'red'))to={x,y};
  await c.onPoint({detail:{pieceId:piece.id,point:{x:piece.x,y:piece.y}}});
