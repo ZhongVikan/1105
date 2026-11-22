@@ -2,9 +2,9 @@
 // This local wx I/O host is not a WeChat device or a real cloud RTT measurement.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {createHost}=require('./recording/canvas-host');
-const G=require('../utils/game-engine'),Online=require('../utils/online'),assets=require('../src/ui-assets');
+const G=require('../utils/game-engine'),Online=require('../utils/online'),assets=require('../src/ui-assets'),FX=require('../src/battle-effects');
 const output=path.resolve(process.argv[2]||path.join(__dirname,'../../work/online-reveal'));
-const delays=[80,400,1000,3000],copy=value=>JSON.parse(JSON.stringify(value));
+const delays=[80,320,400,1000,3000];
 
 (async()=>{
  fs.mkdirSync(output,{recursive:true});
@@ -20,6 +20,7 @@ const delays=[80,400,1000,3000],copy=value=>JSON.parse(JSON.stringify(value));
  renderer.disc=function(x,y,r,label,side,hidden,selected,info){
   if(caseState&&info&&info.id===caseState.id){
    caseState.moverRenders++;
+   caseState.painted.push({hidden,alpha:this.ctx.globalAlpha});
    if(!caseState.confirmed)assert.equal(hidden,true,'concealed preview must keep its back artwork');
   }
   return originalDisc.apply(this,arguments);
@@ -35,7 +36,7 @@ const delays=[80,400,1000,3000],copy=value=>JSON.parse(JSON.stringify(value));
    c._mode='online';c._offset=0;c.setData({mode:'online'});
    c._room={roomId:'render-test',rev:0,side:'red',state,waiting:false,red:{nickname:'R'},black:{nickname:'B'},serverNow:host.now,deadline:host.now+60000};c.sync();
    const started=host.now;let sent=0;
-   caseState={id:move.id,confirmed:false,moverRenders:0};
+   caseState={id:move.id,confirmed:false,moverRenders:0,painted:[]};
    Online.call=action=>{
     assert.equal(action,'move');sent++;
     return new Promise(resolve=>setTimeout(()=>{
@@ -48,13 +49,21 @@ const delays=[80,400,1000,3000],copy=value=>JSON.parse(JSON.stringify(value));
    const duration=motion.timings.total;
    const times=new Set();
    for(let ms=0;ms<=640;ms+=16)times.add(ms);
-   for(const ms of [duration-1,duration+1,delay-1,delay,delay+16,delay+120,delay+240,delay+650])if(ms>=0)times.add(ms);
+   const blendStart=Math.max(delay,motion.timings.impact);
+   for(const ms of [duration-1,duration+1,delay-1,delay,blendStart+70,delay+120,delay+240,delay+650])if(ms>=0)times.add(ms);
    for(let ms=1000;ms<delay;ms+=500)times.add(ms);
    let caseFrames=0,quietAfterAnimation=false;
    try{
     for(const ms of [...times].sort((a,b)=>a-b)){
      host.advance(started+ms);await Promise.resolve();await Promise.resolve();
-     host.draw();frames++;caseFrames++;
+     caseState.painted=[];host.draw();frames++;caseFrames++;
+     const reveal=c._battle.reveal;
+     if(reveal){
+      const alpha=FX.smooth((host.now-reveal.at)/reveal.duration),paint=caseState.painted;
+      assert.equal(paint[0]?.hidden,true,'the back stays visible while the confirmed face fades in');
+      if(alpha>0){assert.equal(paint[1]?.hidden,false);assert.ok(Math.abs(paint[1].alpha-alpha)<.01);}
+      else assert.equal(paint.length,1,'the face must not pop in before the original flip settles');
+     }
      assert.equal(motion.timings.total,duration,'network latency must not extend the local animation');
      if(ms>duration&&ms<delay){
       assert.equal(c.motion,null,'the animation must complete while the request is still pending');
@@ -69,6 +78,7 @@ const delays=[80,400,1000,3000],copy=value=>JSON.parse(JSON.stringify(value));
     assert.equal(sent,1);assert.equal(c._battle.serial,1,'the authoritative response must not replay the move');
     assert.deepEqual(c.data.pieces.find(p=>p.id===move.id),G.displayPieces(result.state.pieces).find(p=>p.id===move.id));
     assert.equal(c.motion,null);assert.ok(caseFrames>=20);assert.ok(caseState.moverRenders>0);
+    assert.equal(c._battle.reveal,null);
     results.push({variant,delayMs:delay,animationMs:duration,frames:caseFrames,quietWhilePending:quietAfterAnimation,events:c._battle.serial,passed:true});
    }catch(error){
     failures.push({variant,delayMs:delay,error:error.message});

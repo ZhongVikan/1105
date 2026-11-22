@@ -32,16 +32,29 @@ for(const variant of ['dark','jieqi']){
   assert.equal(c.motion,motion);assert.equal(motion.at,at);assert.equal(c._battle.serial,1);
   const face=motion.pieces.find(p=>p.id===move.id),expected=c._state.pieces.find(p=>p.id===move.id);
   assert.deepEqual(face,expected,'the live animation must use the confirmed piece, not a concealed preview');
+  assert.equal(c._battle.reveal,null,'an early reply uses the original flip');
   t.mock.timers.tick(motion.timings.total+10);assert.equal(c._battle.animating(Date.now()),false);
  });
- test(`${variant}: late confirmation updates the settled face without replaying animation`,t=>{
+ test(`${variant}: late confirmation blends the settled face without replaying travel`,t=>{
   const {c,move,response,sounds}=setup(t,variant);c.beginOptimisticMove(move);const motion=c.motion;
   t.mock.timers.tick(1100);FX.frame(c,Date.now());c.applyRoom(response());
   assert.equal(c.motion,null);assert.equal(c._battle.serial,1);
-  assert.equal(c._battle.active(),false,'late confirmation must not restart the completed animation');
+  assert.deepEqual(c._battle.reveal.point,move.to);
+  assert.equal(c._battle.reveal.at,Date.now());
+  assert.equal(c._battle.events.length,0);
   assert.equal(c.data.pieces.find(p=>p.id===move.id).hidden,false);
   t.mock.timers.tick(1);
   assert.equal(sounds.length,1,'authoritative feedback must be played once');
+  t.mock.timers.tick(c._battle.reveal.duration);
+  FX.frame(c,Date.now());assert.equal(c._battle.reveal,null);assert.equal(c._battle.active(),false);
+ });
+ test(`${variant}: a reply after the flip midpoint leaves the back visible until the flip settles`,t=>{
+  const {c,move,response}=setup(t,variant);c.beginOptimisticMove(move);const motion=c.motion;
+  t.mock.timers.tick(motion.timings.travel+motion.timings.reveal*.75);
+  c.applyRoom(response());
+  assert.equal(c.motion,motion);
+  assert.equal(c._battle.reveal.at,motion.at+motion.timings.impact);
+  assert.equal(c._battle.serial,1);
  });
 }
 

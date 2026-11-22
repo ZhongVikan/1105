@@ -14,16 +14,27 @@ class Renderer {
  queueFrame(){if(this.running&&!this.frame)this.frame=requestAnimationFrame(()=>{this.frame=null;this.loop();});}
  resume(){if(this.running)return;this.running=true;this.dirty=true;this.loop();}
  stop(){this.running=false;if(this.frame)cancelAnimationFrame(this.frame);this.frame=null;}
- loop(){if(!this.running)return;const time=Date.now(),c=this.runtime.controller;let animate=false;
+ loop(){if(!this.running)return;const time=Date.now(),c=this.runtime.controller;let animate=false,presentationChanged=false;
   if(c&&this.runtime.scene==='game'){
-   const revision=c._battle&&c._battle.revision;FX.frame(c,time);if(c._battle&&revision!==c._battle.revision)this.dirty=true;
+   const revision=c._battle&&c._battle.revision;FX.frame(c,time);presentationChanged=!!c._battle&&revision!==c._battle.revision;
+   if(presentationChanged)this.dirty=true;
    const warning=c.data.seconds<=10&&!c.data.ended&&!c.data.waiting&&!c.data.starting&&!c.data.paused&&!c._hidden;
    animate=!c.data.manualPaused&&!c._hidden&&((c._battle&&(c._battle.animating?c._battle.animating(time):c._battle.active()))||warning||(c.data.showResult&&time-c._resultShownAt<340)||(c.data.matchFound&&time-c.data.matchFoundAt<900));
    if(!c._battle&&c.motion){const end=c.motion.at+FX.timing(c.motion.move).total;if(time<end)animate=true;else if(this.lastDraw<end)this.dirty=true;}
   }
   const authLoading=this.runtime.scene==='profile'&&(this.runtime.loginBusy||this.runtime._privacyBusy);
   animate=animate||authLoading;
-  if((this.dirty||animate)&&time-this.lastDraw>=(animate?(this.fxQuality===0?33:16):(this.runtime.scene==='rules'?16:42))){this.draw(time);this.lastDraw=time;this.dirty=false;}
+  let paint;
+  if(animate){
+   // Follow the refresh cadence even when Date.now() rounds a 60 Hz interval down.
+   const interval=1000/(this.fxQuality===0?30:60),next=this.nextAnimationDraw;
+   paint=next===undefined||time>=next-2||time<this.lastDraw;
+   if(paint)this.nextAnimationDraw=next===undefined||time<this.lastDraw?time+interval:Math.max(next+interval,time+interval-2);
+  }else{
+   this.nextAnimationDraw=undefined;
+   paint=this.dirty&&(presentationChanged||time-this.lastDraw>=(this.runtime.scene==='rules'?16:42));
+  }
+  if(paint){this.draw(time);this.lastDraw=time;this.dirty=false;}
   if(this.dirty||animate)this.queueFrame();
  }
 
@@ -176,25 +187,32 @@ class Renderer {
   if(d.showStickers)this.stickerSheet(c);
   if(d.showResult)this.result(c);if(d.manualPaused){this.overlay();const y=Math.max(this.top+60,(this.height-180)/2);this.card(35,y,305,180,'rgba(255,247,231,0.72)','#e6c58d');this.text('对局已暂停',187.5,y+39,22,'#74512d','center',true);this.text(d.mode==='local'?'计时已暂停':'计时与 AI 均已暂停',187.5,y+76,13,'#927650','center');this.button('继续对局',64,y+110,247,46,()=>c.togglePause(),true);}
  }
- board(d,b,motion,now=Date.now()){
+ board(d,b,motion,now=Date.now(),reveal=null){
   const rotationData=this.runtime&&this.runtime.controller&&this.runtime.controller.data||d,ctx=this.ctx;ctx.save();ctx.translate(b.x,b.y);ctx.scale(b.w/720,b.h/800);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
   const raster=Resolution.boardScale(b.w,this.scale||1,this.dpr||1);if((this._boardRasterScale||1)!==raster){this.boardCache=null;this.stationaryKey=null;}this._boardRasterScale=raster;
   if(!this.boardCache){const canvas=wx.createCanvas();canvas.width=Math.round(720*raster);canvas.height=Math.round(800*raster);const original=this.ctx;this.ctx=canvas.getContext('2d');this.ctx.setTransform(raster,0,0,raster,0,0);this.paintBoardBase();this.ctx=original;this.boardCache=canvas;}
   ctx.drawImage(this.boardCache,0,0,720,800);
   const elapsed=motion?Math.max(0,now-motion.at):Infinity,moving=motion&&elapsed<(motion.timings||FX.timing(motion.move)).total?motion.move.id:null;
-  const signature=[d.pieces,d.flipped,d.mode||rotationData.mode,d.selectedId,moving,this.uiRevision||0];
+  const changing=reveal&&d.pieces.find(p=>p.id===reveal.id&&!p.hidden&&p.x===reveal.point.x&&p.y===reveal.point.y);
+  const signature=[d.pieces,d.flipped,d.mode||rotationData.mode,d.selectedId,moving,changing?.id,this.uiRevision||0];
   if(!this.stationaryKey||signature.some((v,i)=>v!==this.stationaryKey[i])){
    const layer=this.stationaryLayer||wx.createCanvas(),width=Math.round(720*raster),height=Math.round(800*raster);if(layer.width!==width)layer.width=width;if(layer.height!==height)layer.height=height;const original=this.ctx;this.ctx=layer.getContext('2d');this.ctx.setTransform(raster,0,0,raster,0,0);this.ctx.clearRect(0,0,720,800);
-   for(const p of d.pieces){if(p.id===moving||p.id===d.selectedId)continue;const pos=this.boardPoint(p,d.flipped);this.orientedDisc(pos.x,pos.y,33,p,rotationData);}
+   for(const p of d.pieces){if(p.id===moving||p.id===d.selectedId||p===changing)continue;const pos=this.boardPoint(p,d.flipped);this.orientedDisc(pos.x,pos.y,33,p,rotationData);}
    this.ctx=original;this.stationaryLayer=layer;this.stationaryKey=signature;
   }
   ctx.drawImage(this.stationaryLayer,0,0,720,800);if(moving)FX.under(this,motion,elapsed,d.flipped);
   const draw=p=>{const animated=p.id===moving,at=animated?FX.pose(motion.move,elapsed,q=>this.boardPoint(q,d.flipped),this._movingPose||(this._movingPose={}),motion.timings):this.boardPoint(p,d.flipped);
    let face=p,hidden=p.hidden;if(animated){hidden=motion.move.revealed?(p.hidden||at.hidden):p.hidden;
     if(motion.move.fusionType&&elapsed<(motion.timings||FX.timing(motion.move)).contact&&motion.move.sourcePieces)face=motion.move.sourcePieces[0];}
-   ctx.save();ctx.translate(at.x,at.y-(at.lift||0));ctx.scale(at.flipScale||1,1);this.orientedDisc(0,0,33,face,rotationData,false,null,hidden);ctx.restore();
+   ctx.save();ctx.translate(at.x,at.y-(at.lift||0));ctx.scale(at.flipScale||1,1);
+   if(p===changing){
+    const alpha=FX.smooth((now-reveal.at)/reveal.duration);
+    if(alpha<1)this.orientedDisc(0,0,33,face,rotationData,false,null,true);
+    if(alpha>0){ctx.globalAlpha*=alpha;this.orientedDisc(0,0,33,face,rotationData,false,null,false);}
+   }else this.orientedDisc(0,0,33,face,rotationData,false,null,hidden);
+   ctx.restore();
   };
-  for(const p of d.pieces)if(p.id===moving&&p.id!==d.selectedId)draw(p);
+  for(const p of d.pieces)if((p.id===moving||p===changing)&&p.id!==d.selectedId)draw(p);
   for(const p of d.pieces)if(p.id===d.selectedId)draw(p);
   if(moving)FX.over(this,motion,elapsed,d.flipped);
   ctx.restore();
