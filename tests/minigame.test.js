@@ -124,7 +124,7 @@ test('stats paints translucent cards, ranks the displayed rate, and matches the 
  const Renderer=require('../src/renderer'),r=new Renderer({scene:'game'}),paints=[],labels=[],frames=[],textPasses=[];
  const bronze=[[0,'#32363e'],[.38,'#4c484b'],[.65,'#a56e49'],[1,'#875333']];
  const silver=[[0,'#f5faff'],[.38,'#eaf0f8'],[.66,'#bbcbd9'],[1,'#a0b2c4']];
- const platinum=[[0,'#ffe57a'],[.43,'#ffc93c'],[.53,'#f7f1d8'],[.65,'#a9e5fa'],[1,'#64bee3']];
+ const platinum=[[0,'#ffe57a'],[.42,'#ffcf48'],[1,'#f7ad6b']];
  const diamond=[[0,'#6726a7'],[.42,'#922ab1'],[.56,'#b82a64'],[1,'#b51f2f']];
  r.ctx.createLinearGradient=()=>({stops:[],addColorStop(offset,color){this.stops.push([offset,color]);}});
  r.ctx.strokeText=label=>textPasses.push([label,r.ctx.strokeStyle]);
