@@ -60,7 +60,7 @@ function sparks(renderer,event,x,y,age,quality,subtle=false){
  }c.restore();
 }
 function over(renderer,motion,elapsed,flipped){
- const m=motion.move,t=motion.timings||timing(m),c=renderer.ctx,at=renderer.boardPoint(m.to||m.from,flipped),age=elapsed-t.contact;
+ const m=motion.move,t=motion.timings||timing(m),c=renderer.ctx,target=m.to||m.from,at=renderer.boardPoint(target,flipped),age=elapsed-t.contact;
  if(m.fusionType)require('./fusion-effects').draw(renderer,motion,elapsed,flipped);
  if(age<0)return;
  const capture=!!(m.capturedId||(m.capturedIds&&m.capturedIds.length));
@@ -68,6 +68,16 @@ function over(renderer,motion,elapsed,flipped){
  if(capture){
   CueArt.captureImpact(renderer,at.x,at.y,age);
   sparks(renderer,motion,at.x,at.y,age,renderer.fxQuality);
+  // Leave a gap around the white last-move ring.
+  const duration=t.total-t.contact,alpha=cueAlpha(age,duration),phase=smooth(age/duration),radius=42;
+  CueArt.redHalo(renderer,at.x,at.y,alpha,phase,radius);
+  if(m.capturedIds?.length>1){
+   for(const victim of motion.removedPieces||motion.capturedPieces||[]){
+    if(!m.capturedIds.includes(victim.id)||(victim.x===target.x&&victim.y===target.y))continue;
+    const point=renderer.boardPoint(victim,flipped);
+    CueArt.redHalo(renderer,point.x,point.y,alpha,phase,radius);
+   }
+  }
  }
  if(m.revealed){const f=revealProgress(elapsed,t);if(f>.5){sweep(renderer,at.x,at.y,(f-.5)*2,.3);sparks(renderer,motion,at.x,at.y,elapsed-t.travel-t.reveal*.5,0,true);}}
 }
@@ -110,7 +120,7 @@ function drawCues(renderer,events,now,flipped,{board,topSide,topCheckY,bottomChe
  if(check){
   const age=now-check.at,king=renderer.boardPoint(check.king,flipped);
   checkAlpha=cueAlpha(age,check.duration);
-  CueArt.checkHalo(renderer,king.x,king.y,checkAlpha,smooth(age/check.duration));
+  CueArt.redHalo(renderer,king.x,king.y,checkAlpha,smooth(age/check.duration));
  }
  ctx.restore();
  if(eat)eatLabel(renderer,eat.point,now-eat.at,board,flipped);
