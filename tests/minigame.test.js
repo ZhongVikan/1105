@@ -121,12 +121,20 @@ test('avatar taps open stats for the displayed player in online and simulated ga
 });
 test('stats paints translucent cards, ranks the displayed rate, and matches the close and retry buttons',()=>{
  mock();
- const Renderer=require('../src/renderer'),r=new Renderer({scene:'game'}),paints=[],labels=[],frames=[];
- const platinum=[[0,'#385b75'],[.42,'#6195ab'],[1,'#365b74']];
+ const Renderer=require('../src/renderer'),r=new Renderer({scene:'game'}),paints=[],labels=[],frames=[],textPasses=[];
+ const bronze=[[0,'#32363e'],[.38,'#4c484b'],[.65,'#a56e49'],[1,'#875333']];
+ const silver=[[0,'#f5faff'],[.38,'#eaf0f8'],[.66,'#bbcbd9'],[1,'#a0b2c4']];
+ const platinum=[[0,'#ffe57a'],[.43,'#ffc93c'],[.53,'#f7f1d8'],[.65,'#a9e5fa'],[1,'#64bee3']];
  const diamond=[[0,'#6726a7'],[.42,'#922ab1'],[.56,'#b82a64'],[1,'#b51f2f']];
  r.ctx.createLinearGradient=()=>({stops:[],addColorStop(offset,color){this.stops.push([offset,color]);}});
+ r.ctx.strokeText=label=>textPasses.push([label,r.ctx.strokeStyle]);
+ r.ctx.fillText=label=>textPasses.push([label]);
  r.card=(x,y,w,h,fill)=>paints.push(fill);
- r.text=(label,x,y,size,fill)=>labels.push({label,fill});
+ const text=r.text;
+ r.text=(label,x,y,size,fill,align,bold,outline)=>{
+  labels.push({label,fill});
+  text.call(r,label,x,y,size,fill,align,bold,outline);
+ };
  r.pauseFrameArt=(...box)=>{frames.push(box);return true;};
  let closed=0,retrySide;
  const controller={closePlayerStats(){closed++;},showPlayerStats(side){retrySide=side;}};
@@ -137,10 +145,16 @@ test('stats paints translucent cards, ranks the displayed rate, and matches the 
   a.ok(Math.abs(x+w/2-center)<1e-10);
  };
  try{
-  for(const [wins,rate,fill] of [[2990,'29.9%','#8d572b'],[2996,'30%','#627482'],[4990,'49.9%','#627482'],[5000,'50%',platinum],[6990,'69.9%',platinum],[7000,'70%',diamond]]){
+  const tiers=[
+   [2990,'29.9%',bronze],[2996,'30%',silver,'#556578'],[4990,'49.9%',silver,'#556578'],
+   [5000,'50%',platinum,'#596577'],[6990,'69.9%',platinum,'#596577'],[7000,'70%',diamond]
+  ];
+  for(const [wins,rate,fill,outline] of tiers){
    r.playerStatsCard(controller,{...stats,wins});
    const rateLabel=labels.find(text=>text.label===rate);
-   a.ok(rateLabel);a.deepEqual(rateLabel.fill.stops??rateLabel.fill,fill);
+   a.ok(rateLabel);a.deepEqual(rateLabel.fill.stops,fill);
+   a.deepEqual(textPasses.filter(([label])=>label===rate),outline?[[rate,outline],[rate]]:[[rate]]);
+   textPasses.length=0;
    a.deepEqual(labels.find(text=>text.label===stats.games),{label:stats.games,fill:'#000000'});
    a.deepEqual(paints.splice(0),['rgba(255,248,232,.76)','rgba(248,234,209,.58)','rgba(248,234,209,.58)']);
    a.ok(labels.some(text=>text.label==='关闭'));labels.length=0;
