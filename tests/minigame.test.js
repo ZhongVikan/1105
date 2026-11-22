@@ -61,6 +61,28 @@ test('settings shows a feedback entry with a useful hint when the native button 
   a.equal(message,'请在手机微信中使用留言反馈');
  }finally{teardown(app);}
 });
+test('the identity panel displays the saved WeChat avatar when its download completes',async()=>{
+ const {storage}=mock(320,568),fileID='cloud://profile-test/avatars/player.jpg';
+ storage['chess-profile']={nickname:'微信玩家',avatar:fileID};
+ const Runtime=require('../src/runtime'),app=new Runtime(),renderer=app.renderer;
+ const art={},photo={width:640,height:480,set src(path){a.equal(path,'/tmp/player.jpg');queueMicrotask(()=>this.onload());}};
+ const downloads=[],crops=[];
+ let completeDownload;
+ wx.cloud={downloadFile({fileID:id}){downloads.push(id);return new Promise(resolve=>{completeDownload=resolve;});}};
+ wx.createImage=()=>photo;
+ renderer.uiImage=key=>key==='secondary_profile'?art:null;
+ renderer.ctx.drawImage=(image,...crop)=>{if(image===photo)crops.push(crop);};
+ try{
+  app.open('profile');renderer.draw();renderer.draw();
+  a.deepEqual(downloads,[fileID]);a.equal(crops.length,0);
+  completeDownload({tempFilePath:'/tmp/player.jpg'});
+  await new Promise(resolve=>setImmediate(resolve));
+  renderer.draw();
+  a.deepEqual(crops,[[80,0,480,480,-110.5,-110.5,221,221]]);
+  app.profile=null;renderer.draw();
+  a.equal(crops.length,1);a.deepEqual(downloads,[fileID]);
+ }finally{teardown(app);}
+});
 test('navigation refreshes target scene for home and AI controls',async()=>{
  mock();const Runtime=require('../src/runtime'),app=new Runtime();
  const tap=target=>{const x=(target.x+target.w/2)*app.renderer.scale+(app.renderer.offsetX||0),y=(target.y+target.h/2)*app.renderer.scale;app.touchStart({touches:[{clientX:x,clientY:y}]});app.touchEnd({changedTouches:[{clientX:x,clientY:y}]});};
