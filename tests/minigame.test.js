@@ -123,7 +123,7 @@ test('stats paints translucent cards, ranks the displayed rate, and matches the 
  mock();
  const Renderer=require('../src/renderer'),r=new Renderer({scene:'game'}),paints=[],labels=[],frames=[];
  const platinum=[[0,'#385b75'],[.42,'#6195ab'],[1,'#365b74']];
- const diamond=[[0,'#16688f'],[.42,'#078eb2'],[.56,'#186c9c'],[1,'#253b82']];
+ const diamond=[[0,'#6726a7'],[.42,'#922ab1'],[.56,'#b82a64'],[1,'#b51f2f']];
  r.ctx.createLinearGradient=()=>({stops:[],addColorStop(offset,color){this.stops.push([offset,color]);}});
  r.card=(x,y,w,h,fill)=>paints.push(fill);
  r.text=(label,x,y,size,fill)=>labels.push({label,fill});
