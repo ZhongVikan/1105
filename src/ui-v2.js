@@ -14,10 +14,10 @@ function winRateFill(ctx,rate,y){
   fill.addColorStop(1,'#365b74');
   return fill;
  }
- fill.addColorStop(0,'#16688f');
- fill.addColorStop(.42,'#078eb2');
- fill.addColorStop(.56,'#186c9c');
- fill.addColorStop(1,'#253b82');
+ fill.addColorStop(0,'#6726a7');
+ fill.addColorStop(.42,'#922ab1');
+ fill.addColorStop(.56,'#b82a64');
+ fill.addColorStop(1,'#b51f2f');
  return fill;
 }
 const TYPES={'帥':'general','帅':'general','將':'general','将':'general','仕':'advisor','士':'advisor','相':'elephant','象':'elephant','車':'rook','车':'rook','俥':'rook','馬':'horse','马':'horse','傌':'horse','炮':'cannon','砲':'cannon','兵':'pawn','卒':'pawn'};
