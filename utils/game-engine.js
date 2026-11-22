@@ -1,4 +1,4 @@
-const C=require('./coordinates'),R=require('./rules-core');
+const C=require('./coordinates'),R=require('./rules-core'),NoCapture=require('./no-capture');
 function attackers(pieces,side){
  const king=pieces.find(p=>p.kind==='general'&&p.side===side);if(!king)return [];
  return pieces.filter(p=>{const actor=R.controller(p);if(actor===side)return false;
@@ -40,7 +40,8 @@ function move(s,id,to){
  if(p.hidden&&p.side!==actor&&checked(pieces,actor))return {ok:true,state:{...next,status:'ended',winner:R.opposite(actor),reason:'unlucky',motif:'神之一手'},event:'unlucky'};
  const check=checked(pieces,next.turn);next.recentMoves=[...(s.recentMoves||[]),{id,actor,ply:next.ply,check}].slice(-8);
  if(!hasAttempt(pieces,next.turn))return {ok:true,state:{...next,status:'ended',winner:actor,reason:check?'checkmate':'stalemate',motif:check?classify(pieces,next.turn,{captured:target,last:next.lastMove,recent:s.recentMoves,ply:next.ply}):'困毙'},event:check?'checkmate':'stalemate'};
- return {ok:true,state:next,event:check?'check':target?'capture':p.hidden?'reveal':'move'};
+ const event=target?'capture':p.hidden?'reveal':'move';
+ return NoCapture.settle(next,check?'check':event,event);
 }
 function finish(s,reason){if(s.status!=='playing')return s;if(!['resign','draw'].includes(reason))throw new Error('Unknown result');return {...s,status:'ended',reason,winner:reason==='draw'?null:R.opposite(s.turn),motif:reason==='draw'?'和棋':'认输'};}
 const displayPieces=pieces=>pieces.map(p=>p.hidden?{id:p.id,x:p.x,y:p.y,side:p.variant==='jieqi'?R.controller(p):'red',text:'',hidden:true,...(p.variant?{variant:p.variant}:{})}:{...p});

@@ -1,7 +1,13 @@
 const FX=require('./battle-effects'),BattleTimeline=require('./battle-timeline');
 const G=require('../utils/game-engine'),R=require('../utils/rules-core'),S=require('../utils/storage'),AI=require('../utils/ai'),AIWorker=require('../utils/ai-worker-client'),Clock=require('../utils/turn-clock'),Audio=require('../utils/audio'),Online=require('../utils/online'),stickers=require('../utils/stickers');
-const Repetition=require('../utils/repetition'),Fusion=require('../utils/fusion'),FakeOpponents=require('../utils/fake-opponents');
+const Repetition=require('../utils/repetition'),Fusion=require('../utils/fusion'),FakeOpponents=require('../utils/fake-opponents'),NoCapture=require('../utils/no-capture');
 const names={red:'红方',black:'黑方'};
+function resultDescription(state){
+ if(state.status!=='ended')return '';
+ if(state.reason==='not-ready')return '对局未开始';
+ if(state.reason===NoCapture.DRAW_REASON)return '连续'+NoCapture.DRAW_ROUNDS+'回合未吃子';
+ return state.winner?names[state.winner]+'获胜':'双方和棋';
+}
 const requestLabel=(kind,state)=>kind==='restart'?(state.status==='ended'?'再来一局':'重开'):kind==='undo'?'悔棋':'合棋';
 const MATCH_HUMAN_WAIT_SECONDS=10,MATCH_FAKE_MAX_SECONDS=20;
 // Poll more often while waiting for the opponent's move and back off while
@@ -83,7 +89,7 @@ module.exports={
   if(this._room){
    if(!this._poll)this.startPolling();
    this.poll();
-  }
+  }else if(this._state)this.updateNoCaptureWarning(this._state);
  },
  onHide(){this.clearPresentation();this._warningPhase=null;this._hidden=true;this._token++;clearInterval(this._interval);this.stopPolling();this._interval=null;if(this._audio)this._audio.hide();/* Clock intentionally continues in background. */},
  onUnload(){this._inference=null;this.clearPresentation();this._warningPhase=null;clearTimeout(this._resultTimer);clearTimeout(this._matchFoundTimer);clearTimeout(this._moveAudioTimer);clearTimeout(this._fakeStickerTimer);clearTimeout(this._fakeRequestTimer);if(this._aiDelayResolve){clearTimeout(this._aiDelayTimer);this._aiDelayResolve();this._aiDelayResolve=null;}this._fakePending=null;this._alive=false;this._token++;clearInterval(this._interval);this.stopPolling();clearTimeout(this._checkTimer);clearTimeout(this._stickerTimer);if(this._mode==='online'&&this._room&&this._state&&this._state.status==='ended')Online.call('leave',{roomId:this._room.roomId,rev:this._room.rev}).catch(()=>{});if(this._audio){if(this.runtime&&this.runtime.audio===this._audio)this._audio.hide();else this._audio.destroy();}},
@@ -127,6 +133,15 @@ module.exports={
  },
  countdownCue(seconds){if(seconds>10||!this._audio||typeof this._audio.speak!=='function'||!this._state||this._state.status!=='playing')return;const key=this._state.ply+':'+this._state.turn;if(this._countdownCueKey===key)return;this._countdownCueKey=key;this._audio.speak('47_十秒倒计时_渐进版.wav',{countdown:true});},
  stopCountdownCue(){this._countdownCueKey='';if(this._audio&&this._audio.cancelCountdown)this._audio.cancelCountdown();},
+ updateNoCaptureWarning(state){
+  const turns=NoCapture.turns(state),rounds=Math.floor(turns/2);
+  if(rounds<NoCapture.WARNING_ROUNDS){this._noCaptureWarningKey=null;return;}
+  if(rounds>=NoCapture.DRAW_ROUNDS||state.status!=='playing'||this._hidden||this.data.waiting||this.data.starting)return;
+  const key=(this.data.roomId||'')+':'+(state.ply-turns);
+  if(this._noCaptureWarningKey===key)return;
+  this._noCaptureWarningKey=key;
+  this.toast('已连续'+rounds+'回合未吃子，'+(NoCapture.DRAW_ROUNDS-rounds)+'回合后判和');
+ },
  activateFakeOpponent(){
   if(!this._matchQueue||!this._room||!this._room.waiting||this._hidden)return;
   return this.exitWaiting('ai');
@@ -134,8 +149,9 @@ module.exports={
  sync(event){if(this._optimisticMove&&!event&&this._commandPending){this.setData(this.optimisticPatch(this._optimisticMove.state));return;}if(this._inference&&publicKey(this._state)!==this._inference.formalKey)this.leaveInference('正式棋局已更新，已退出推理');if(this._state.status==='ended'&&['timeout','resign','draw','mutual-check','perpetual-check'].includes(this._state.reason))event=this._state.reason==='timeout'?'timeout':'end';const moved=['fusion','chase','move','capture','reveal','check','checkmate','stalemate','unlucky'].includes(event);const s=this._state;if(s.status==='ended'&&!moved)this.motion=null;if(this._repetitionHistory&&this._repetitionHistory.some(v=>v.ply>=s.ply)){this._repetitionHistory=this._repetitionHistory.filter(v=>v.ply<s.ply);this._longCheckWarning=null;}const top=this.data.flipped?'red':'black',bottom=R.opposite(top),ended=s.status==='ended',last=s.lastMove;const rp=this._room;
   const profile=this.runtime&&this.runtime.profile,player=side=>rp&&rp[side]?rp[side].nickname:this._fakeOpponent&&side==='black'?this._fakeOpponent.nickname:this._mode==='ai'&&side==='red'&&profile&&profile.nickname?profile.nickname:this._mode==='ai'&&side==='black'?({easy:'简易 · 菜就多练局',normal:'普通 · 不服就干场',hard:'困难 · 棋王修罗场'}[this._level]):names[side]+' · 你',avatar=side=>rp&&rp[side]?rp[side].avatar||'':this._fakeOpponent&&side==='black'?this._fakeOpponent.avatar||'':this._mode==='ai'&&side==='red'&&profile?profile.avatar||'':'';
   const pendingMessage=this.data.pendingRequest?'等待对方同意'+(this.data.pendingRequestLabel||requestLabel(this.data.pendingRequest,this._state)):'';
-  const resultDetail=!ended?'':s.reason==='not-ready'?'对局未开始':s.winner?names[s.winner]+'获胜':'双方和棋';
+  const resultDetail=resultDescription(s);
   const patch={pieces:G.displayPieces(s.pieces),turn:s.turn,topSide:top,bottomSide:bottom,topName:player(top),bottomName:player(bottom),topAvatar:avatar(top),bottomAvatar:avatar(bottom),topCaptured:s.captured.filter(p=>p.capturedBy===top),bottomCaptured:s.captured.filter(p=>p.capturedBy===bottom),message:pendingMessage|| (ended?'对局结束':rp&&rp.waiting?(this.data.onlineMatch?'正在匹配棋友':'等待棋友入座'):G.checked(s.pieces,s.turn)?names[s.turn]+'被将军，必须应将':names[s.turn]+'行棋'),ply:s.ply,selectedId:s.pendingChase||'',pendingChase:s.pendingChase||null,fusionUsed:s.fusionUsed||null,ended,showResult:ended?this.data.showResult:false,resultTitle:ended?s.motif:'',resultDetail,unlucky:ended&&s.reason==='unlucky',movingId:moved&&last?last.id:'',lastMoveId:last?last.id:'',revealId:moved&&last&&last.revealed?last.id:'',captureId:moved&&last&&last.capturedId?last.id:''};if(this._mode!=='online'&&this._clock){patch.seconds=this._clock.seconds();patch.paused=this._clock.reasons.size>0;}this.presentTransition(event,s,patch);this.setData(patch);this.updateResult(ended,s);
+  if(this._mode!=='online')this.updateNoCaptureWarning(s);
  },
  clearPresentation(){if(this._audio&&this._audio.cancelBattleQueue)this._audio.cancelBattleQueue();if(this._battle)this._battle.clear();this.motion=null;this.cue=null;clearTimeout(this._moveAudioTimer);for(const sound of this._battleSounds||[])clearTimeout(sound.timer);this._battleSounds=[];},
  pausePresentation(){if(this._battle)this._battle.pause();this._visualPauseAt=Date.now();for(const sound of this._battleSounds||[])clearTimeout(sound.timer);},
@@ -143,7 +159,7 @@ module.exports={
  armBattleSound(sound){sound.timer=setTimeout(()=>{const list=this._battleSounds||[],i=list.indexOf(sound);if(i<0)return;list.splice(i,1);if(this._alive&&!this._hidden&&!this.data.manualPaused)this._audio.event(sound.event,sound.state);},Math.max(0,sound.at-Date.now()));},
  optimisticPatch(state){
   const top=this.data.flipped?'red':'black',bottom=R.opposite(top),last=state.lastMove,ended=state.status==='ended';
-  return {pieces:G.displayPieces(state.pieces),turn:state.turn,topSide:top,bottomSide:bottom,topCaptured:(state.captured||[]).filter(p=>p.capturedBy===top),bottomCaptured:(state.captured||[]).filter(p=>p.capturedBy===bottom),message:this.data.message,ply:state.ply,selectedId:state.pendingChase||'',pendingChase:state.pendingChase||null,fusionUsed:state.fusionUsed||null,ended,showResult:false,resultTitle:ended?state.motif:'',resultDetail:ended?(state.winner?names[state.winner]+'获胜':'双方和棋'):'',unlucky:ended&&state.reason==='unlucky',movingId:last?last.id:'',lastMoveId:last?last.id:'',revealId:last&&last.revealed?last.id:'',captureId:last&&last.capturedId?last.id:''};
+  return {pieces:G.displayPieces(state.pieces),turn:state.turn,topSide:top,bottomSide:bottom,topCaptured:(state.captured||[]).filter(p=>p.capturedBy===top),bottomCaptured:(state.captured||[]).filter(p=>p.capturedBy===bottom),message:this.data.message,ply:state.ply,selectedId:state.pendingChase||'',pendingChase:state.pendingChase||null,fusionUsed:state.fusionUsed||null,ended,showResult:false,resultTitle:ended?state.motif:'',resultDetail:resultDescription(state),unlucky:ended&&state.reason==='unlucky',movingId:last?last.id:'',lastMoveId:last?last.id:'',revealId:last&&last.revealed?last.id:'',captureId:last&&last.capturedId?last.id:''};
  },
  beginOptimisticMove(data){
   if(this._mode!=='online'||!this._room||this._optimisticMove)return null;
@@ -468,6 +484,7 @@ module.exports={
   if(changed||identityChanged||confirmed){const syncEvent=room.event&&/^undo-/.test(room.event)?'':(old?room.event:undefined);this.sync(syncEvent);}
   if(confirmed){preview.settled=true;this._optimisticMove=null;}
   this.tick();
+  this.updateNoCaptureWarning(room.state);
   if(room.sticker&&(!old||!old.sticker||old.sticker.seq!==room.sticker.seq)&&room.serverNow-room.sticker.at<4000)this.showSticker(room.sticker.id);
   this.applyRequestFeedback(room,old);
 
