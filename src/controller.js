@@ -148,24 +148,30 @@ module.exports={
   return this.exitWaiting('ai');
  },
  recordSimulatedStats(state){
-  const match=this._simulatedMatch;
-  if(!match||match.finished||state.status!=='ended')return;
+  const match=this._simulatedMatch,opponent=this._fakeOpponent;
+  if(!match||!opponent||match.finished||state.status!=='ended')return;
   match.finished=true;
-  SimulatedStats.record({simulationId:match.id,round:match.round,winner:state.winner||null}).catch(()=>{});
+  SimulatedStats.record({simulationId:match.id,round:match.round,winner:state.winner||null},state.variant||'dark',opponent.nickname).catch(()=>{});
  },
  async showPlayerStats(side){
   if(!this._alive||this._hidden||this.data.waiting||this.data.starting||this.data.inference||this.data.showResult||this.data.playerStats?.status==='loading')return;
   const room=this._mode==='online'?this._room:null,match=this._simulatedMatch;
-  const subject=room&&room[side];
-  if(!subject&&!this._fakeOpponent)return;
+  const subject=room&&room[side],opponent=this._fakeOpponent;
+  if(!subject&&!opponent)return;
   const name=subject?.nickname||(side===this.data.topSide?this.data.topName:this.data.bottomName),variant=this._state.variant||'dark';
   const panel={side,name,variant,status:'loading'};
   this.setData({playerStats:panel});
   const isCurrent=()=>this._alive&&this.data.playerStats===panel;
+  const showLocal=()=>{
+   if(this._simulatedMatch!==match||this._fakeOpponent!==opponent){this.closePlayerStats();return;}
+   const totals=SimulatedStats.localTotals(variant,side==='black'?opponent.nickname:null);
+   this.setData({playerStats:{...panel,status:'ready',source:'local',...totals}});
+  };
   try{
-   if(!subject&&!match)throw Error('拟真人战绩暂不可用');
+   if(!subject&&!match?.id){showLocal();return;}
    await SimulatedStats.flush().catch(()=>{});
    if(!isCurrent())return;
+   if(!subject&&SimulatedStats.hasPending(match.id)){showLocal();return;}
    const result=await Online.call('playerStats',subject?{roomId:room.roomId,side,nickname:subject.nickname,avatar:subject.avatar}:{simulationId:match.id,side});
    if(!isCurrent())return;
    const current=subject&&this._room?.[side];
@@ -173,7 +179,11 @@ module.exports={
     this.closePlayerStats();return;
    }
    this.setData({playerStats:{...panel,name:result.nickname,status:'ready',games:result.games,wins:result.wins}});
-  }catch(error){if(isCurrent())this.setData({playerStats:{...panel,status:'error'}});}
+  }catch(error){
+   if(!isCurrent())return;
+   if(subject)this.setData({playerStats:{...panel,status:'error'}});
+   else showLocal();
+  }
  },
  closePlayerStats(){if(this.data.playerStats)this.setData({playerStats:null});},
  sync(event){if(this._optimisticMove&&!event&&this._commandPending){this.setData(this.optimisticPatch(this._optimisticMove.state));return;}if(this._inference&&publicKey(this._state)!==this._inference.formalKey)this.leaveInference('正式棋局已更新，已退出推理');if(this._state.status==='ended'&&['timeout','resign','draw','mutual-check','perpetual-check'].includes(this._state.reason))event=this._state.reason==='timeout'?'timeout':'end';const moved=['fusion','chase','move','capture','reveal','check','checkmate','stalemate','unlucky'].includes(event);const s=this._state;if(s.status==='ended'&&!moved)this.motion=null;if(this._repetitionHistory&&this._repetitionHistory.some(v=>v.ply>=s.ply)){this._repetitionHistory=this._repetitionHistory.filter(v=>v.ply<s.ply);this._longCheckWarning=null;}const top=this.data.flipped?'red':'black',bottom=R.opposite(top),ended=s.status==='ended',last=s.lastMove;const rp=this._room;
@@ -601,8 +611,8 @@ module.exports={
    this._state=privateStateForOffline(this._state);this._history=[];this._repetitionHistory=[];this._token++;
    this._matchQueue=false;this._matchResolved=false;this._onlineSide=null;
    const simulated=destination==='ai'?outcome.simulated:null;
-   this._simulatedMatch=simulated?{id:simulated.id,round:1,finished:false}:null;
    this._mode=destination;this._fakeOpponent=simulated?FakeOpponents.forNickname(simulated.nickname):destination==='ai'?FakeOpponents.pick():null;
+   this._simulatedMatch=this._fakeOpponent?{id:simulated?.id||null,round:1,finished:false}:null;
    this._fakeRestartRejected=false;this._fakeUndoUsed={};
    if(this._fakeOpponent)this._level='hard';
    this._clock.start();

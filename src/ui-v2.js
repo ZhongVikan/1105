@@ -213,7 +213,7 @@ function install(Renderer){const p=Renderer.prototype;
   this.overlay('rgba(47,36,28,.36)');
   this.card(40,y,295,192,'rgba(255,248,232,.76)','#ebc477');
   this.text(heading,187.5,y+26,19,'#61320f','center',true);
-  this.text(VARIANT_NAMES[stats.variant]+' · 对局战绩',187.5,y+51,13,'#826048','center');
+  this.text(VARIANT_NAMES[stats.variant]+' · '+(stats.source==='local'?'本机战绩':'对局战绩'),187.5,y+51,13,'#826048','center');
   if(stats.status==='ready'){
    const rate=stats.games?Number((stats.wins*100/stats.games).toFixed(1)):null;
    const tileFill='rgba(248,234,209,.58)';
