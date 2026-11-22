@@ -1,6 +1,8 @@
 const Difficulty=require('./ai-difficulty');
 const G=require('./game-engine'),R=require('./rules-core'),Repetition=require('./repetition');
 const VALUE={general:20000,rook:900,cannon:450,horse:420,elephant:200,advisor:180,pawn:100};
+const CLASSIC_START=new Map(R.initialLayout('classic').map(p=>[p.id,p]));
+const OPENING_TOLERANCE=48;
 // Never read secret identities. Simulated reveals are public role hypotheses.
 function publicBoard(pieces){return pieces.map(p=>p.hidden?{id:p.id,x:p.x,y:p.y,hidden:true,side:R.controller(p),kind:R.openingRole(p),...(p.variant?{variant:p.variant}:{})}:{...p});}
 function candidateTargets(p,kind,side){
@@ -42,16 +44,52 @@ function openingBonus(board,m,historyLength){
  if(kind==='horse')return 95;if(kind==='pawn')return 55;if(kind==='elephant'||kind==='advisor')return 18;return 0;
 }
 
+function isClassicFirstTurn(board,side,history){
+ if(board.length!==CLASSIC_START.size||history[history.length-1]?.ply>1)return false;
+ let opponentMoved=false;
+ for(const piece of board){
+  const initial=CLASSIC_START.get(piece.id);
+  if(!initial||piece.hidden||piece.variant!=='classic'||piece.kind!==initial.kind||piece.side!==initial.side)return false;
+  if(piece.x===initial.x&&piece.y===initial.y)continue;
+  if(piece.side===side||opponentMoved)return false;
+  opponentMoved=true;
+ }
+ return true;
+}
+
+function chooseClassicOpening(board,ranked,random){
+ const sorted=ranked.slice().sort((a,b)=>b.v-a.v),best=sorted[0];
+ if(Math.abs(best.v)>=99000)return best.m;
+ const plans=new Map();
+ for(const candidate of sorted){
+  if(candidate.v<best.v-OPENING_TOLERANCE)break;
+  const kind=board.find(p=>p.id===candidate.m.id).kind;
+  if(candidate!==best&&(kind==='general'||kind==='advisor'))continue;
+  if(!plans.has(kind))plans.set(kind,candidate.m);
+ }
+ const choices=[...plans.values()];
+ return choices[Math.min(choices.length-1,Math.floor(random()*choices.length))];
+}
+
 // Complete each iterative depth; use alpha-beta and bounded capture extensions.
 async function choose(pieces,side,level='normal',options={}){
  const cancel=options.cancel||(()=>false),random=options.random||Math.random,yieldFrame=options.yieldFrame||(()=>new Promise(r=>setTimeout(r,12)));
  if(cancel())return null;
- const board=publicBoard(pieces);let list=moves(board,side).filter(m=>!options.allowMove||options.allowMove(m));
- // Give the full-information opening a small pool of distinct plans. The old
- // priority order rewarded the legal cannon capture of the horse so strongly
- // that every classic game began with the same exchange.
- const classicOpening=!options.history?.length&&board.length===32&&board.some(p=>!p.hidden&&p.kind==='horse');
- if(classicOpening){const quiet=list.filter(m=>{const p=board.find(p=>p.id===m.id),target=board.find(q=>q.x===m.to.x&&q.y===m.to.y);return !(p&&p.kind==='cannon'&&target&&target.kind==='horse');});if(quiet.length>=4)list=quiet;}
+ const board=publicBoard(pieces),history=options.history||[];
+ let list=moves(board,side).filter(m=>!options.allowMove||options.allowMove(m));
+ const classicOpening=!history.length&&board.length===32&&board.some(p=>!p.hidden&&p.kind==='horse');
+ const normalClassicOpening=level==='normal'&&isClassicFirstTurn(board,side,history);
+ if(classicOpening||normalClassicOpening){
+  const alternatives=list.filter(m=>{
+   const target=board.find(p=>p.x===m.to.x&&p.y===m.to.y);
+   if(target?.kind!=='horse'||board.find(p=>p.id===m.id).kind!=='cannon')return true;
+   if(!normalClassicOpening)return false;
+   // Keep a hanging horse available, and skip an immediate cannon-for-horse trade.
+   const after=apply(board,m,side),opponent=R.opposite(side);
+   return !after.some(p=>p.side===opponent&&G.legalAttempt(after,p.id,m.to,opponent));
+  });
+  if(alternatives.length>=4)list=alternatives;
+ }
  if(!list.length)return null;
  const hiddenCount=board.reduce((n,p)=>n+(p.hidden?1:0),0),rootCount=list.length;
  // Keep phone CPU bursts short. Complex dark/jieqi openings get a smaller budget because
@@ -64,13 +102,15 @@ async function choose(pieces,side,level='normal',options={}){
  // extension shorter so the budget reaches another main-search ply instead.
  const qDepth=hiddenCount>0?(effective==='hard'?2:1):(effective==='hard'?3:2);
  const started=Date.now(),deadline=started+timeBudget;
- const visits=new Map();for(const state of (options.history||[]).slice(-120)){const k=Repetition.key(state);visits.set(k,(visits.get(k)||0)+1);}
+ const visits=new Map();for(const state of history.slice(-120)){const k=Repetition.key(state);visits.set(k,(visits.get(k)||0)+1);}
  const penalties=new Map(list.map(m=>{const next=apply(board,m,side),k=Repetition.key({pieces:next,turn:R.opposite(side)});return [m,Math.min(2400,(visits.get(k)||0)*600)];}));
+ // For the first classic turn, compare plans using the search score with repetition penalties.
+ const bonuses=new Map(list.map(m=>[m,normalClassicOpening?0:rootBonus(board,m)+openingBonus(board,m,history.length)]));
  const moveCache=new Map(),evalCache=new Map(),tt=new Map(),killers=new Map(),historyOrder=new Map();
  const stateKey=(b,actor)=>actor+'|'+b.map(p=>p.id+':'+p.x+','+p.y+':'+p.side+':'+p.kind+':'+!!p.hidden+':'+!!p.uncertain).join(';');
  const cachedMoves=(b,actor)=>{const k=stateKey(b,actor);let v=moveCache.get(k);if(!v){v=moves(b,actor);moveCache.set(k,v);}return v;};
  const cachedScore=(b,actor)=>{const k=stateKey(b,actor);let v=evalCache.get(k);if(v===undefined){v=score(b,actor);evalCache.set(k,v);}return v;};
- const initial=ordered(board,list).map(m=>({m,v:cachedScore(apply(board,m,side),side)+rootBonus(board,m)+openingBonus(board,m,(options.history||[]).length)-penalties.get(m)})).sort((a,b)=>b.v-a.v);let ranked=initial;let nodes=0,lastYield=Date.now(),best=initial[0].m,completed=0,ttHits=0;const STOP={};let cpuMs=0;const cpuBudget=base.cpu;const moveKey=m=>m.id+':'+m.to.x+','+m.to.y;
+ const initial=ordered(board,list).map(m=>({m,v:cachedScore(apply(board,m,side),side)+bonuses.get(m)-penalties.get(m)})).sort((a,b)=>b.v-a.v);let ranked=initial;let nodes=0,lastYield=Date.now(),best=initial[0].m,completed=0,ttHits=0;const STOP={};let cpuMs=0;const cpuBudget=base.cpu;const moveKey=m=>m.id+':'+m.to.x+','+m.to.y;
  const searchOrder=(b,list,preferred,ply)=>list.map(m=>({m,v:movePriority(b,m,preferred)+(killers.get(ply)===moveKey(m)?500:0)+Math.min(400,historyOrder.get(moveKey(m))||0)})).sort((a,b)=>b.v-a.v).map(v=>v.m);
  async function checkpoint(){if(cancel()||Date.now()>=deadline||cpuMs+Date.now()-lastYield>=cpuBudget||nodes>=nodeLimit)throw STOP;nodes++;if(Date.now()-lastYield>=6){cpuMs+=Date.now()-lastYield;await yieldFrame();lastYield=Date.now();if(cancel()||Date.now()>=deadline)throw STOP;}}
  async function search(b,actor,depth,alpha,beta,ply,q){
@@ -84,10 +124,17 @@ async function choose(pieces,side,level='normal',options={}){
  }
  for(let depth=1;depth<=base.depth;depth++){
   let alpha=-Infinity,choice=best;const scored=[];
-  try{for(const m of ordered(board,list,best)){const penalty=penalties.get(m),bonus=rootBonus(board,m)+openingBonus(board,m,(options.history||[]).length),v=-await search(apply(board,m,side),R.opposite(side),depth-1,-Infinity,Infinity,1,qDepth)-penalty+bonus;scored.push({m,v});if(v>alpha){alpha=v;choice=m;}}}catch(e){if(e!==STOP)throw e;break;}
-  ranked=scored;best=choice;completed=depth;if(board.length>=30&&(options.history||[]).length<=3){const near=scored.filter(v=>v.v>=alpha-(effective==='easy'?70:48));best=near[Math.min(near.length-1,Math.floor(random()*near.length))].m;}if(alpha>99000)break;
+  try{for(const m of ordered(board,list,best)){const v=-await search(apply(board,m,side),R.opposite(side),depth-1,-Infinity,Infinity,1,qDepth)-penalties.get(m)+bonuses.get(m);scored.push({m,v});if(v>alpha){alpha=v;choice=m;}}}catch(e){if(e!==STOP)throw e;break;}
+  ranked=scored;best=choice;completed=depth;
+  if(!normalClassicOpening&&board.length>=30&&history.length<=3){
+   const near=scored.filter(v=>v.v>=alpha-(effective==='easy'?70:OPENING_TOLERANCE));
+   best=near[Math.min(near.length-1,Math.floor(random()*near.length))].m;
+  }
+  if(alpha>99000)break;
  }
- if(effective!=='hard'&&!classicOpening)best=Difficulty.select(ranked,effective,random)||best;
+ if(normalClassicOpening){
+  if(completed)best=chooseClassicOpening(board,ranked,random);
+ }else if(effective!=='hard'&&!classicOpening)best=Difficulty.select(ranked,effective,random)||best;
  if(options.onStats)options.onStats({nodes,depth:completed,elapsedMs:Date.now()-started,cpuMs:cpuMs+Date.now()-lastYield,cpuBudget,nodeLimit,timeBudget,ttHits,ttSize:tt.size,moveCache:moveCache.size,evalCache:evalCache.size});return cancel()?null:best;
 }
 module.exports={choose,publicBoard,apply,moves,score};
