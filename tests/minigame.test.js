@@ -16,6 +16,51 @@ test('Canvas touch maps all 90 points at four screen sizes and both orientations
  }finally{teardown(app);}}
 });
 test('hide/show preserves deadline; settings and rule scenes keep the same match',async()=>{const {events}=mock();const Runtime=require('../src/runtime'),app=new Runtime();app.start();await app.startGame({mode:'ai'});try{const c=app.controller,deadline=c._clock.deadline;app.open('settings');app.toggleSetting('sound');a.equal(require('../utils/storage').settings().sound,false);app.back();a.equal(app.controller,c);events.Hide();a.equal(c._hidden,true);events.Show({query:{}});a.equal(c._hidden,false);a.equal(c._clock.deadline,deadline);app.open('rules');const labels=[],text=app.renderer.secondaryText;app.renderer.secondaryText=function(label,...args){labels.push(label);return text.call(this,label,...args);};app.renderer.draw();a.ok(Number.isFinite(app.renderer.maxScroll)&&app.renderer.maxScroll>=0);a.ok(labels.includes('开局布阵'));for(const hidden of ['其他操作','人机对局长将','神之一手'])a.ok(!labels.includes(hidden));app.renderer.secondaryText=text;app.back();a.equal(app.controller,c);}finally{teardown(app);}});
+test('settings positions the native feedback button below the audio controls and owns its lifecycle',()=>{
+ const {events}=mock(320,568),buttons=[];
+ wx.createFeedbackButton=options=>{
+  const button={options,visible:false,destroyed:false,
+   show(){this.visible=true;},hide(){this.visible=false;},
+   destroy(){this.visible=false;this.destroyed=true;},onTap(){},
+  };
+  buttons.push(button);return button;
+ };
+ const Runtime=require('../src/runtime'),app=new Runtime();
+ function checkPosition(width,height){
+  app.renderer.draw();
+  const {scale,offsetX,targets}=app.renderer,{x,y,w,h}=app.renderer.settingsFeedbackRect();
+  const {style,text}=app.feedbackButton.options;
+  a.equal(text,'留言反馈');
+  a.deepEqual([style.left,style.top,style.width,style.height],[x*scale+offsetX,y*scale,w*scale,h*scale]);
+  a.ok(targets.every(target=>target.y+target.h<y));
+  a.ok(style.left>=0&&style.left+style.width<=width&&style.top+style.height<=height-12);
+ }
+ try{
+  app.start();a.equal(buttons.length,0);a.equal(app.profile,null);
+  app.open('settings');checkPosition(320,568);
+  const first=app.feedbackButton;a.equal(first.visible,true);
+  events.Hide();a.equal(first.visible,false);
+  events.Show({query:{}});a.equal(first.visible,true);a.equal(buttons.length,1);
+  wx.getWindowInfo=()=>({windowWidth:768,windowHeight:1024,pixelRatio:2,safeArea:{top:20,bottom:1012}});
+  events.WindowResize();a.equal(first.destroyed,true);checkPosition(768,1024);
+  const resized=app.feedbackButton;
+  app.back();a.equal(resized.destroyed,true);a.equal(app.feedbackButton,null);
+  app.open('settings');const reopened=app.feedbackButton;
+  app.open('rules');a.equal(reopened.destroyed,true);a.equal(app.feedbackButton,null);
+ }finally{teardown(app);}
+});
+test('settings shows a feedback entry with a useful hint when the native button is unavailable',()=>{
+ mock();const Runtime=require('../src/runtime'),app=new Runtime();
+ wx.createFeedbackButton=()=>undefined;
+ let message;wx.showToast=options=>{message=options.title;};
+ try{
+  app.open('settings');app.renderer.draw();
+  const feedback=app.renderer.settingsFeedbackRect();
+  const target=app.renderer.targets.find(r=>r.y===feedback.y&&r.w===feedback.w);
+  a.ok(target);target.action();
+  a.equal(message,'请在手机微信中使用留言反馈');
+ }finally{teardown(app);}
+});
 test('navigation refreshes target scene for home and AI controls',async()=>{
  mock();const Runtime=require('../src/runtime'),app=new Runtime();
  const tap=target=>{const x=(target.x+target.w/2)*app.renderer.scale+(app.renderer.offsetX||0),y=(target.y+target.h/2)*app.renderer.scale;app.touchStart({touches:[{clientX:x,clientY:y}]});app.touchEnd({changedTouches:[{clientX:x,clientY:y}]});};
