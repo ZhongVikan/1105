@@ -602,7 +602,7 @@ module.exports={
    this._matchQueue=false;this._matchResolved=false;this._onlineSide=null;
    const simulated=destination==='ai'?outcome.simulated:null;
    this._simulatedMatch=simulated?{id:simulated.id,round:1,finished:false}:null;
-   this._mode=destination;this._fakeOpponent=simulated?{nickname:simulated.nickname,avatar:''}:destination==='ai'?FakeOpponents.pick():null;
+   this._mode=destination;this._fakeOpponent=simulated?FakeOpponents.forNickname(simulated.nickname):destination==='ai'?FakeOpponents.pick():null;
    this._fakeRestartRejected=false;this._fakeUndoUsed={};
    if(this._fakeOpponent)this._level='hard';
    this._clock.start();
