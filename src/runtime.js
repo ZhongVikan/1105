@@ -85,11 +85,11 @@ class Runtime {
   if(options.mode==='online'&&!config.cloudEnv){this.toast('真人对战还需配置云开发环境');return;}
   if(options.mode==='online'&&!this.profile){this._pendingGame=options;this.open('profile');return false;}
   if(this._startingGame)return false;
-  const start={};this._startingGame=start;
+  const start={scene:this.scene};this._startingGame=start;
   try{
-   try{if(this.renderer.preloadGameAssets&&(await this.renderer.preloadGameAssets(options.variant))===false)throw Error('棋盘资源加载失败');}
-   catch(e){this.toast('游戏资源加载失败，请重试');return false;}
-   if(this._startingGame!==start)return false;
+   try{if(this.renderer.preloadGameAssets&&(await this.renderer.preloadGameAssets(options.variant,options.mode==='online'))===false)throw Error('对局资源加载失败');}
+   catch(e){if(this._startingGame===start&&this.scene===start.scene)this.toast('游戏资源加载失败，请重试');return false;}
+   if(this._startingGame!==start||this.scene!==start.scene)return false;
    this.destroyAuthButton();if(this.controller)this.controller.onUnload();
    const c={...definition,data:JSON.parse(JSON.stringify(definition.data)),runtime:this};
    c.setData=patch=>{if(patch.showResult&&!c.data.showResult)c._resultShownAt=Date.now();const changed=Object.keys(patch).some(k=>c.data[k]!==patch[k]);Object.assign(c.data,patch);if(changed&&this.controller===c)this.invalidate();};

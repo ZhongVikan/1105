@@ -6,11 +6,30 @@ function syncController(profile,fake=null){
  c.setData=patch=>Object.assign(c.data,patch);c.presentTransition=()=>{};c.updateResult=()=>{};return c;
 }
 
-test('home controls are usable while the first artwork is loading',()=>{
- const context=new Proxy({measureText:t=>({width:String(t).length*10}),createLinearGradient:()=>({addColorStop(){}})},{get:(o,k)=>k in o?o[k]:()=>{}});
- const packages=[];
- global.requestAnimationFrame=()=>1;global.cancelAnimationFrame=()=>{};global.wx={createCanvas:()=>({getContext:()=>context}),getWindowInfo:()=>({windowWidth:375,windowHeight:812,pixelRatio:2,safeArea:{top:20,bottom:800}}),getMenuButtonBoundingClientRect:()=>({bottom:52}),loadSubpackage:req=>packages.push(req.name)};
- try{const r=new Renderer({scene:'home',controller:null});r.draw();assert.equal(r.targets.length,10);assert.ok(packages.includes('uiTitle'));assert.ok(!packages.includes('uiFusionPieces'));}
+test('cold home waits for its modern artwork and can retry a failed package',async()=>{
+ const labels=[],packages=new Map(),images=new Map(),settle=()=>new Promise(resolve=>setImmediate(resolve));
+ const context=new Proxy({fillText:text=>labels.push(text),measureText:t=>({width:String(t).length*10}),createLinearGradient:()=>({addColorStop(){}})},{get:(o,k)=>k in o?o[k]:()=>{}});
+ global.requestAnimationFrame=()=>1;global.cancelAnimationFrame=()=>{};
+ global.wx={
+  createCanvas:()=>({getContext:()=>context}),getWindowInfo:()=>({windowWidth:375,windowHeight:812,pixelRatio:2,safeArea:{top:20,bottom:800}}),
+  getMenuButtonBoundingClientRect:()=>({bottom:52}),loadSubpackage:req=>packages.set(req.name,req),
+  createImage:()=>({set src(file){images.set(file,this);}}),
+ };
+ try{
+  const r=new Renderer({scene:'home',controller:null});
+  r.draw();assert.equal(r.targets.length,0);assert.deepEqual(labels.splice(0),['正在加载游戏…']);
+  assert.deepEqual([...packages.keys()].sort(),['uiScene','uiTitle']);
+  packages.get('uiScene').success();packages.get('uiTitle').fail();await settle();
+  for(const image of images.values())image.onload();
+  images.clear();await settle();
+  r.draw();assert.equal(r.targets.length,1);assert.deepEqual(labels.splice(0),['游戏资源加载失败','重试']);
+  r.targets[0].action();r.draw();assert.equal(r.targets.length,0);
+  packages.get('uiTitle').success();await settle();
+  images.get('uiTitle/mode_reference.jpg').onload();
+  r.draw();assert.equal(r.targets.length,0);assert.equal(labels.includes('人机对战'),false);
+  images.get('uiTitle/home_reference.jpg').onload();await settle();
+  r.draw();assert.equal(r.targets.length,10);assert.ok(labels.includes('人机对战'));
+ }
  finally{delete global.wx;delete global.requestAnimationFrame;delete global.cancelAnimationFrame;}
 });
 
