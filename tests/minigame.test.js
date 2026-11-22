@@ -7,7 +7,29 @@ function mock(width=375,height=812){
  return {events,storage};
 }
 function teardown(app){if(app){app.home();app.renderer.stop();}delete global.wx;delete global.requestAnimationFrame;delete global.cancelAnimationFrame;}
-test('actual game.js boots without Page/App/DOM and has the requested AppID',()=>{mock();const app=require('../game');try{a.equal(app.scene,'home');a.equal(app.renderer.targets.length,10);const root=path.resolve(__dirname,'..'),cfg=require('../project.config.json'),manifest=require('../game.json');a.equal(cfg.compileType,'game');a.equal(cfg.appid,'wx5afed2840d141da3');a.ok(fs.existsSync(path.join(root,'game.json')));a.equal(manifest.workers,'workers');a.ok(fs.existsSync(path.join(root,manifest.workers,'ai-worker.js')));a.ok(!fs.existsSync(path.join(root,'app.json')));for(const s of manifest.subpackages)a.ok(fs.existsSync(path.join(root,s.root,'game.js')));}finally{teardown(app);}});
+const settleAssets=()=>new Promise(resolve=>setImmediate(resolve));
+test('actual game.js boots without Page/App/DOM and has the requested AppID',async()=>{mock();const app=require('../game');try{a.equal(app.scene,'home');a.equal(app.renderer.targets.length,0);await settleAssets();app.renderer.draw();a.equal(app.renderer.targets.length,10);const root=path.resolve(__dirname,'..'),cfg=require('../project.config.json'),manifest=require('../game.json');a.equal(cfg.compileType,'game');a.equal(cfg.appid,'wx5afed2840d141da3');a.ok(fs.existsSync(path.join(root,'game.json')));a.equal(manifest.workers,'workers');a.ok(fs.existsSync(path.join(root,manifest.workers,'ai-worker.js')));a.ok(!fs.existsSync(path.join(root,'app.json')));for(const s of manifest.subpackages)a.ok(fs.existsSync(path.join(root,s.root,'game.js')));}finally{teardown(app);}});
+test('the first game frame waits for battle artwork and retries a failed decode',async()=>{
+ mock();const Runtime=require('../src/runtime'),app=new Runtime(),r=app.renderer,requests=[];
+ let message;
+ wx.showToast=event=>{message=event.title;};
+ wx.createImage=()=>({set src(file){
+  if(file==='uiTitle/game_reference.jpg')requests.push(this);
+  else queueMicrotask(()=>this.onload());
+ }});
+ try{
+  app.open('difficulty');let entry=app.startGame({mode:'ai'});
+  await settleAssets();
+  a.ok(r.uiImage('board_base'));a.equal(requests.length,1);
+  a.equal(app.scene,'difficulty');a.equal(app.controller,null);
+  requests[0].onerror();a.equal(await entry,false);a.equal(message,'游戏资源加载失败，请重试');
+  entry=app.startGame({mode:'ai'});await settleAssets();
+  a.equal(requests.length,2);a.equal(app.scene,'difficulty');
+  requests[1].onload();a.equal(await entry,true);
+  r.draw();
+  a.equal(r._targetState.scene,'game');a.ok(Object.keys(r._battleArt).some(key=>key.startsWith('game_reference|')));
+ }finally{teardown(app);}
+});
 test('Canvas touch maps all 90 points at four screen sizes and both orientations; rejects swipes',async()=>{
  for(const [width,height] of [[320,568],[375,667],[430,932],[768,1024]]){mock(width,height);const Runtime=require('../src/runtime'),app=new Runtime();await app.startGame({mode:'ai'});try{const c=app.controller,received=[];c.onPoint=e=>received.push(e.detail);app.renderer.draw();const b=app.renderer.boardRect;const touch=(p,flipped)=>{const px=app.renderer.boardPoint(p,flipped);return {clientX:(b.x+px.x*b.w/720)*app.renderer.scale+(app.renderer.offsetX||0),clientY:(b.y+px.y*b.h/800)*app.renderer.scale};};
   for(const flipped of [false,true]){c.data.flipped=flipped;for(let y=0;y<10;y++)for(let x=0;x<9;x++){const t=touch({x,y},flipped);app.touchStart({touches:[t]});app.touchEnd({changedTouches:[t]});a.deepEqual(received.at(-1).point,{x,y});}}
@@ -185,13 +207,13 @@ test('navigation refreshes target scene for home and AI controls',async()=>{
  const tap=target=>{const x=(target.x+target.w/2)*app.renderer.scale+(app.renderer.offsetX||0),y=(target.y+target.h/2)*app.renderer.scale;app.touchStart({touches:[{clientX:x,clientY:y}]});app.touchEnd({changedTouches:[{clientX:x,clientY:y}]});};
  try{
   app.open('difficulty');app.renderer.draw();a.equal(app.renderer._targetState.scene,'difficulty');tap(app.renderer.targets.at(-1));
-  a.equal(app.scene,'home');app.renderer.draw();a.equal(app.renderer._targetState.scene,'home');tap(app.renderer.targets.find(t=>t.w>300&&t.y>420&&t.y<520));
+  a.equal(app.scene,'home');app.renderer.draw();await settleAssets();app.renderer.draw();a.equal(app.renderer._targetState.scene,'home');tap(app.renderer.targets[4]);
   a.equal(app.scene,'difficulty');app.renderer.draw();await app.startGame({mode:'ai'});app.renderer.draw();a.equal(app.renderer._targetState.scene,'game');let paused=0;app.controller.togglePause=()=>paused++;tap(app.renderer.targets.find(t=>t.x>280&&t.y<100));a.equal(paused,1);
  }finally{teardown(app);}
 });
 test('mini game invitation uses query instead of a miniprogram page path',()=>{const def=require('../src/controller'),share=def.onShareAppMessage.call({data:{roomId:'a'.repeat(32)}});a.equal(share.query,'room='+'a'.repeat(32));a.equal(share.path,undefined);});
 
-test('home variant tabs launch selected rules and restart preserves variant',async()=>{mock();const Runtime=require('../src/runtime'),app=new Runtime();try{for(const [i,variant] of ['dark','classic','jieqi','fusion'].entries()){app.home();app.renderer.draw();app.renderer.targets[i].action();a.equal(app.variant,variant);await app.startGame({mode:'ai'});const c=app.controller;a.equal(c._state.variant,variant);c.modal=(title,body,fn)=>fn();c.restart();a.equal(c._state.variant,variant);app.open('rules');app.renderer.draw();}}finally{teardown(app);}});
+test('home variant tabs launch selected rules and restart preserves variant',async()=>{mock();const Runtime=require('../src/runtime'),app=new Runtime();try{app.renderer.draw();await settleAssets();for(const [i,variant] of ['dark','classic','jieqi','fusion'].entries()){app.home();app.renderer.draw();app.renderer.targets[i].action();a.equal(app.variant,variant);await app.startGame({mode:'ai'});const c=app.controller;a.equal(c._state.variant,variant);c.modal=(title,body,fn)=>fn();c.restart();a.equal(c._state.variant,variant);app.open('rules');app.renderer.draw();}}finally{teardown(app);}});
 
 test('new board artwork uses measured intersections, rejects river center and frame',()=>{mock();const R=require('../src/renderer'),r=new R({});try{a.deepEqual(r.boardPoint({x:0,y:0}),{x:71,y:78});a.deepEqual(r.boardPoint({x:8,y:9}),{x:648,y:680});const b={x:0,y:0,w:720,h:800};a.equal(r.boardHit(0,0,b),null);a.equal(r.boardHit(359.75,(689.5+825)/4,b),null);}finally{delete global.wx;}});
 test('hidden pieces only request the shared back; missing resources fall back without crashing',()=>{mock();const R=require('../src/renderer'),r=new R({}),keys=[];r.uiImage=key=>{keys.push(key);return null;};try{for(const side of ['red','black'])r.disc(20,20,16,'車',side,true,false);a.deepEqual(keys,['v2_piece_hidden','v2_piece_hidden']);r.disc(20,20,16,'帥','red',false,true);a.equal(keys.at(-1),'v2_piece_red_general');}finally{delete global.wx;}});

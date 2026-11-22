@@ -229,19 +229,13 @@ function install(Renderer){const p=Renderer.prototype;
  p.inferenceAssumptionSheet=function(controller){
  const opts=this.runtime.controller.data.inferenceAssumptionOptions||[],rows=Math.ceil(opts.length/2),h=86+rows*38+48,y=Math.max(this.top+18,(this.height-h)/2);this.overlay('rgba(47,36,28,.74)');this.card(27,y,321,h,'rgba(255,247,231,.78)','#e6c58d');this.text('选择假设身份',187.5,y+30,20,'#74512d','center',true);this.text('仅用于推理，不代表正式棋局已揭示',187.5,y+57,11,'#8f7354','center');opts.forEach((o,i)=>{const x=44+(i%2)*145,yy=y+78+Math.floor(i/2)*38;this.card(x,yy,133,32,'#fff1cf','#d3a05a');this.text(o.label,x+66.5,yy+16,14,o.side==='red'?'#c52d21':'#252525','center',true);this.targets.push({x,y:yy,w:133,h:32,action:()=>controller.chooseInferenceAssumption(o.side,o.kind)});});this.button('取消选择',135,y+h-48,105,46,()=>controller.cancelInferenceAssumption(),true);
  };
- p.preloadGameAssets=async function(variant){
-  const assets=require('./ui-assets');
-  const keys=['board_base','v2_piece_hidden',...Object.keys(meta).filter(key=>
+ p.preloadGameAssets=async function(variant,online=false){
+  const keys=['background','game_reference','match_info_frame','pause_button_blank','board_base','v2_piece_hidden',...Object.keys(meta).filter(key=>
    !key.endsWith('_selected')&&(/^v2_piece_(red|black)_/.test(key)||variant==='fusion'&&key.startsWith('v2_fusion_')))];
-  const packages=new Set(keys.map(key=>assets[key].split('/')[0]));
-  await Promise.all(Array.from(packages,name=>this.loadUiPackage(name)));
-  const images=await Promise.all(keys.map(key=>{
-   const previous=this.images.get(assets[key]);
-   if(previous&&previous.error)this.images.delete(assets[key]);
-   if(this.uiImage(key))return true;
-   const record=this.images.get(assets[key]);return record&&record.ready||false;
-  }));
-  FX.preload(this);return images.every(Boolean);
+  if(online)keys.push('waiting_button');
+  const ready=await this.preloadUiImages(keys);
+  if(ready)FX.preload(this);
+  return ready;
  };
 }
 module.exports={install};

@@ -68,7 +68,7 @@ module.exports={
    const renderer=this.runtime&&this.runtime.renderer;
    if(!room.state)throw Error('未能取得对局资料，请重试');
    if(this._alive&&room.state.variant!==variant&&renderer&&renderer.preloadGameAssets){
-    if((await renderer.preloadGameAssets(room.state.variant))===false)throw Error('棋盘资源加载失败，请重试');
+    if((await renderer.preloadGameAssets(room.state.variant,true))===false)throw Error('对局资源加载失败，请重试');
    }
    return room;
   })();
